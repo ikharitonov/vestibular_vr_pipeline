@@ -1,0 +1,140 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/harp-tech/reflex-generator/main/schema/device.json
+device: VestibularH2
+whoAmI: 1225
+firmwareVersion: "0.2"
+hardwareTargets: "1.0"
+registers:
+  Control:
+    address: 32
+    type: U8
+    length: 1
+    access: Write
+    description: Controls the device's modules.
+    registerType: Command
+    visibility: public
+    volatile: "no"
+    maskType: EnableDisable
+  Pulses:
+    address: 33
+    type: S32
+    length: 1
+    access: Write
+    description: Sends the number of pulses written in this register and set the direction according to the number's signal.
+    registerType: Command
+    visibility: public
+    volatile: "yes"
+  NominalPulseInterval:
+    address: 34
+    type: U16
+    length: 1
+    access: Write
+    description: Sets the motor's pulse interval when running at nominal speed.
+    registerType: Command
+    visibility: public
+    volatile: "no"
+    minValue: 100
+    maxValue: 20000
+    defaultValue: 250
+  InitialPulseInterval:
+    address: 35
+    type: U16
+    length: 1
+    access: Write
+    description: Sets the motor's maximum pulse interval, used as the first and last pulse interval of a rotation.
+    registerType: Command
+    visibility: public
+    volatile: "no"
+    minValue: 100
+    maxValue: 20000
+    defaultValue: 2000
+  PulseStepInterval:
+    address: 36
+    type: U16
+    length: 1
+    access: Write
+    description: Sets the acceleration. The pulse's interval is decreased by this value when accelerating and increased when de-accelerating.
+    registerType: Command
+    visibility: public
+    volatile: "no"
+    minValue: 2
+    maxValue: 2000
+    defaultValue: 10
+  PulsePeriod:
+    address: 37
+    type: U16
+    length: 1
+    access: Write
+    description: Sets the period of the pulse.
+    registerType: Command
+    visibility: public
+    volatile: "no"
+    minValue: 10
+    maxValue: 1000
+    defaultValue: 50
+  Encoder:
+    address: 38
+    type: S16
+    length: 1
+    access: Event
+    description: Contains the reading of the quadrature encoder.
+    registerType: Event
+    visibility: public
+    volatile: "yes"
+  AnalogInput:
+    address: 39
+    type: S16
+    length: 1
+    access: Event
+    description: Contains the reading of the analog input.
+    registerType: Event
+    visibility: public
+    volatile: "yes"
+  StopSwitch:
+    address: 40
+    type: U8
+    length: 1
+    access: Read
+    description: Contains the state of the stop external switch.
+    registerType: Event
+    visibility: public
+    volatile: "yes"
+    maskType: MotorIsMoving
+  Moving:
+    address: 41
+    type: U8
+    length: 1
+    access: Read
+    description: Contains the state of the motor movement.
+    registerType: Event
+    visibility: public
+    volatile: "yes"
+    maskType: MotorIsMoving
+  ImmediatePulses:
+    address: 42
+    type: S16
+    length: 1
+    access: Write
+    description: Sets immediately the motor's pulse interval. The value's signal defines the direction.
+    registerType: Command
+    visibility: public
+    volatile: "yes"
+
+bitMasks:
+  EnableDisable:
+    description: Bitmask describing the enable or disable commands to control the device's modules.
+    bits:
+      EnableMotor: 0x01
+      DisableMotor: 0x02
+      EnableAnalogIn:  0x04
+      DisableAnalogIn:  0x08
+      EnableQuadEncoder: 0x10
+      DisableQuadEncoder: 0x20
+      resetQuadEncoder: 0x40
+  StopSwitchState:
+    description: "Bitmask describing the state of stop switch."
+    bits:
+      StopSwitch:   0x1
+  MotorIsMoving:
+    description: "Bitmask describing if the motor is moving."
+    bits:
+      IsMoving:   0x1
