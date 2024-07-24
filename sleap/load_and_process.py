@@ -33,9 +33,15 @@ def get_referenced_recalculated_coordinates(df):
     return reference_subtraced_coordinates_dict
 
 def rotate_points(points, theta):
+    # This is for rotating with an angle of positive theta
+    # rotation_matrix = np.array([
+    #     [np.cos(theta), -np.sin(theta)],
+    #     [np.sin(theta), np.cos(theta)]
+    # ])
+    # This is for rotating with an angle of negative theta
     rotation_matrix = np.array([
-        [np.cos(theta), -np.sin(theta)],
-        [np.sin(theta), np.cos(theta)]
+        [np.cos(theta), np.sin(theta)],
+        [-np.sin(theta), np.cos(theta)]
     ])
     rotated_points = points.dot(rotation_matrix.T)
     return rotated_points
@@ -52,14 +58,14 @@ def get_rotated_points(point_name, theta, reference_subtraced_coordinates_dict):
     rotated_points[:,1] = rotated_points[:,1] + temp_mean_center_coord[1]
     return rotated_points
 
-def find_horizontal_axis_angle(df):
+def find_horizontal_axis_angle(df, point1='left', point2='center'):
     # Fits a line between original (unreferenced) left reference point and center of the pupil point, return the angle of the line
-    line_fn = np.polyfit(np.hstack([df[f'left.x'].to_numpy(), df[f'center.x'].to_numpy()]), np.hstack([df[f'left.y'].to_numpy(), df[f'center.y'].to_numpy()]), 1)
+    line_fn = np.polyfit(np.hstack([df[f'{point1}.x'].to_numpy(), df[f'{point2}.x'].to_numpy()]), np.hstack([df[f'{point1}.y'].to_numpy(), df[f'{point2}.y'].to_numpy()]), 1)
     line_fn = np.poly1d(line_fn)
     theta = np.arctan(line_fn[1])
-    return -theta
+    return theta
 
-def moving_avarage_smoothing(X,k):
+def moving_average_smoothing(X,k):
     S = np.zeros(X.shape[0])
     for t in range(X.shape[0]):
         if t < k:
