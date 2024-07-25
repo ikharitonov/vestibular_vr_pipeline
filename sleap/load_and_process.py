@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from ellipse import LsqEllipse
+from scipy.ndimage import median_filter
 
 def load_df(path):
     return pd.read_csv(path)
@@ -74,6 +75,9 @@ def moving_average_smoothing(X,k):
             S[t] = np.sum(X[t-k:t])/k
     return S
 
+def median_filter_smoothing(X, k):
+    return median_filter(X, size=k)
+
 def find_sequential_groups(arr):
     groups = []
     current_group = [arr[0]]
@@ -132,21 +136,15 @@ def get_eight_points_at_time(data_dict, point_name_list, t):
         points_coord_data.append(data_dict[point][t,:])
     return np.stack(points_coord_data, axis=0)
 
-def get_fitted_ellipse_parameters(path):
-    pupil_points = ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 'p7', 'p8']
-
-    df = load_df(path)
-    theta = find_horizontal_axis_angle(df)
-    reference_subtraced_coordinates_dict = get_referenced_recalculated_coordinates(df)
-    rotated_points = {point: get_rotated_points(point, theta, reference_subtraced_coordinates_dict) for point in pupil_points}
+def get_fitted_ellipse_parameters(coordinates_dict, columns_of_interest):
 
     # Collecting parameters of the fitted ellipse into an array over the whole recording
     # ellipse_parameters_data contents = (width, height, phi)
     # ellipse_center_points_data = (center_x, center_y)
     ellipse_parameters_data = []
     ellipse_center_points_data = []
-    for t in range(rotated_points['p1'].shape[0]):
-        reg = LsqEllipse().fit(get_eight_points_at_time(rotated_points, pupil_points, t))
+    for t in range(coordinates_dict['p1'].shape[0]):
+        reg = LsqEllipse().fit(get_eight_points_at_time(coordinates_dict, columns_of_interest, t))
         center, width, height, phi = reg.as_parameters()
         ellipse_parameters_data.append([width, height, phi])
         ellipse_center_points_data.append(center)
@@ -154,3 +152,21 @@ def get_fitted_ellipse_parameters(path):
     ellipse_center_points_data = np.array(ellipse_center_points_data)
 
     return ellipse_parameters_data, ellipse_center_points_data
+
+def get_coordinates_dict(df, columns_of_interest):
+    return {key:df[key].to_numpy() for key in columns_of_interest}
+
+def get_left_right_center_point(coordinates_dict):
+    x = np.hstack([coordinates_dict['left.x'], coordinates_dict['right.x']]).mean()
+    y = np.hstack([coordinates_dict['left.y'], coordinates_dict['right.y']]).mean()
+    return (x, y)
+
+def get_reformatted_coordinates_dict(coordinates_dict, columns_of_interest):
+    # Combining separated x and y number arrays into (samples, 2)-shaped array and subtracting the inferred center point from above
+    return {p:np.stack([coordinates_dict[f'{p}.x'], coordinates_dict[f'{p}.y']], axis=1) for p in columns_of_interest}
+
+def get_centered_coordinates_dict(coordinates_dict, center_point):
+    return {point: arr - center_point for point, arr in coordinates_dict.items()}
+
+def get_rotated_coordinates_dict(coordinates_dict, theta):
+    return {point: rotate_points(arr, theta) for point, arr in coordinates_dict.items()}
