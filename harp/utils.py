@@ -1,4 +1,5 @@
 import harp
+import numpy as np
 import pandas as pd
 from glob import glob
 from pathlib import Path
@@ -72,3 +73,36 @@ def concat_digi_events(series_low: pd.DataFrame, series_high: pd.DataFrame) -> p
     data_on = series_high[series_high==True]
     return pd.concat([data_off, data_on]).sort_index()
 
+
+def get_register_object(register_number, harp_board='h1'):
+    
+    h1_reader = harp.create_reader(f'h1-device.yml', epoch=harp.REFERENCE_EPOCH)
+    h2_reader = harp.create_reader(f'h2-device.yml', epoch=harp.REFERENCE_EPOCH)
+    reference_dict = {
+        'h1': {
+            32: h1_reader.Cam0Event,
+            33: h1_reader.Cam1Event,
+            38: h1_reader.StartAndStop,
+            46: h1_reader.OpticalTrackingRead
+        },
+        'h2': {
+            38: h2_reader.Encoder,
+            39: h2_reader.AnalogInput,
+            42: h2_reader.ImmediatePulses
+        }
+    }
+    return reference_dict[harp_board][register_number]
+
+def read_photodiode(dataset_path, start=0, stop=7000000):
+    # https://github.com/neurogears/vestibular-vr/blob/benchmark-analysis/Python/vestibular-vr/analysis/round_trip.py
+    with open(dataset_path/'OnixAnalogData/OnixAnalogData_0.bin', 'rb') as f:
+        photo_diode = np.fromfile(f, dtype=np.int16).astype(np.single)[start:stop]
+
+    # binarise signal
+    pd1_thresh = np.mean(photo_diode[np.where(photo_diode < 200)]) \
+                + np.std(photo_diode[np.where(photo_diode < 200)])
+
+    photo_diode[np.where(photo_diode <= pd1_thresh)] = 0
+    photo_diode[np.where(photo_diode > pd1_thresh)] = 1
+
+    return photo_diode
