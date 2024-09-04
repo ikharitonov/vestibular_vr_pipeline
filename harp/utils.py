@@ -93,11 +93,24 @@ def get_register_object(register_number, harp_board='h1'):
     }
     return reference_dict[harp_board][register_number]
 
-def read_photodiode(dataset_path, start=0, stop=7000000):
+def read_photodiode(dataset_path):
     # https://github.com/neurogears/vestibular-vr/blob/benchmark-analysis/Python/vestibular-vr/analysis/round_trip.py
-    with open(dataset_path/'OnixAnalogData/OnixAnalogData_0.bin', 'rb') as f:
-        photo_diode = np.fromfile(f, dtype=np.int16).astype(np.single)[start:stop]
+    arrays_to_concatenate = []
+    files_to_read = [x for x in os.listdir(dataset_path/'OnixAnalogData')]
+    
+    def extract_number(filename):
+        return int(filename.split('_')[-1].split('.')[0])
+    
+    # Sort the files based on the extracted number
+    files_to_read.sort(key=extract_number)
+    
+    for filename in files_to_read:
+        with open(dataset_path/'OnixAnalogData'/filename, 'rb') as f:
+            photo_diode = np.fromfile(f, dtype=np.int16).astype(np.single)
+            arrays_to_concatenate.append(photo_diode)
 
+    photo_diode = np.concatenate(arrays_to_concatenate)
+    
     # binarise signal
     pd1_thresh = np.mean(photo_diode[np.where(photo_diode < 200)]) \
                 + np.std(photo_diode[np.where(photo_diode < 200)])
@@ -106,3 +119,28 @@ def read_photodiode(dataset_path, start=0, stop=7000000):
     photo_diode[np.where(photo_diode > pd1_thresh)] = 1
 
     return photo_diode
+
+def read_clock(dataset_path):
+    arrays_to_concatenate = []
+    files_to_read = [x for x in os.listdir(dataset_path/'OnixAnalogClock')]
+    
+    def extract_number(filename):
+        return int(filename.split('_')[-1].split('.')[0])
+    
+    # Sort the files based on the extracted number
+    files_to_read.sort(key=extract_number)
+    
+    for filename in files_to_read:
+        with open(dataset_path/'OnixAnalogClock'/filename, 'rb') as f:
+            clock_data = np.fromfile(f, dtype=np.int16).astype(np.single)
+            arrays_to_concatenate.append(clock_data)
+    
+    clock_data = np.concatenate(arrays_to_concatenate)
+    
+    try:
+        clock_data = clock_data.reshape((-1, 12, 100))
+    except:
+        print('ERROR: Cannot reshape loaded and concatenated OnixAnalogClock binary files into [-1, 12, 100] shape. Returning non-reshaped data.')
+        return clock_data
+
+    return clock_data
