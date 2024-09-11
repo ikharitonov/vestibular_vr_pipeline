@@ -162,3 +162,54 @@ def read_clock(dataset_path):
         return clock_data
 
     return clock_data
+
+def load_register_paths(dataset_path):
+    
+    if not os.path.exists(dataset_path/'HarpDataH1') or not os.path.exists(dataset_path/'HarpDataH2'):
+        raise FileNotFoundError(f"'HarpDataH1' or 'HarpDataH2' folder was not found in {dataset_path}.")
+    h1_folder = dataset_path/'HarpDataH1'
+    h2_folder = dataset_path/'HarpDataH2'
+    
+    h1_files = os.listdir(h1_folder)
+    h1_files = [f for f in h1_files if f.split('_')[0] == 'HarpDataH1']
+    h1_dict = {int(filename.split('_')[1]):h1_folder/filename for filename in h1_files}
+    
+    h2_files = os.listdir(h2_folder)
+    h2_files = [f for f in h2_files if f.split('_')[0] == 'HarpDataH2']
+    h2_dict = {int(filename.split('_')[1]):h2_folder/filename for filename in h2_files}
+    
+    print(f'Dataset {dataset_path.name} contains following registers:')
+    print(f'H1: {list(h1_dict.keys())}')
+    print(f'H2: {list(h2_dict.keys())}')
+    
+    return h1_dict, h2_dict
+
+def load_registers(dataset_path):
+    
+    h1_dict, h2_dict = load_register_paths(dataset_path)
+    
+    h1_data_streams = {}
+    for register in h1_dict.keys():
+        data_stream = load(get_register_object(register, 'h1'), dataset_path/'HarpDataH1')
+        if data_stream.columns.shape[0] > 1:
+            for col_name in data_stream.columns:
+                h1_data_streams[f'{col_name}({register})'] = data_stream[col_name]
+        elif data_stream.columns.shape[0] == 1:
+            h1_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream
+        else:
+            raise ValueError(f"Loaded data stream does not contain supported number of columns in Pandas DataFrame. Dataframe columns shape = {data_stream.columns.shape}")
+            
+    h2_data_streams = {}
+    for register in h2_dict.keys():
+        data_stream = load(get_register_object(register, 'h2'), dataset_path/'HarpDataH2')
+        if data_stream.columns.shape[0] > 1:
+            for col_name in data_stream.columns:
+                h2_data_streams[f'{col_name}({register})'] = data_stream[col_name]
+        elif data_stream.columns.shape[0] == 1:
+            h2_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream[data_stream.columns[0]]
+        else:
+            raise ValueError(f"Loaded data stream does not contain supported number of columns in Pandas DataFrame. Dataframe columns shape = {data_stream.columns.shape}")
+            
+    print('Successfully loaded.')
+    
+    return h1_data_streams, h2_data_streams
