@@ -111,8 +111,9 @@ def read_onix_digital(path):
         read_dfs.append(pd.read_csv(path/'OnixDigital'/f'OnixDigital_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv'))
     return pd.concat(read_dfs).reset_index().drop(columns='index')
 
-def read_photodiode(dataset_path):
+def read_photodiode(dataset_path, buffer_size=100):
     # https://github.com/neurogears/vestibular-vr/blob/benchmark-analysis/Python/vestibular-vr/analysis/round_trip.py
+    # https://open-ephys.github.io/onix-docs/Software%20Guide/Bonsai.ONIX/Nodes/AnalogIODevice.html
     arrays_to_concatenate = []
     files_to_read = [x for x in os.listdir(dataset_path/'OnixAnalogData')]
     
@@ -129,12 +130,18 @@ def read_photodiode(dataset_path):
 
     photo_diode = np.concatenate(arrays_to_concatenate)
     
-    # binarise signal
-    pd1_thresh = np.mean(photo_diode[np.where(photo_diode < 200)]) \
-                + np.std(photo_diode[np.where(photo_diode < 200)])
+#     # binarise signal
+#     pd1_thresh = np.mean(photo_diode[np.where(photo_diode < 200)]) \
+#                 + np.std(photo_diode[np.where(photo_diode < 200)])
 
-    photo_diode[np.where(photo_diode <= pd1_thresh)] = 0
-    photo_diode[np.where(photo_diode > pd1_thresh)] = 1
+#     photo_diode[np.where(photo_diode <= pd1_thresh)] = 0
+#     photo_diode[np.where(photo_diode > pd1_thresh)] = 1
+    
+    try:
+        photo_diode = photo_diode.reshape((-1, 12, buffer_size))
+    except:
+        print('ERROR: Cannot reshape loaded and concatenated OnixAnalogData binary files into [-1, 12, 100] shape. Returning non-reshaped data.')
+        return photo_diode
 
     return photo_diode
 
@@ -151,17 +158,9 @@ def read_clock(dataset_path):
     for filename in files_to_read:
         with open(dataset_path/'OnixAnalogClock'/filename, 'rb') as f:
             clock_data = np.fromfile(f, dtype=np.int16).astype(np.single)
-            arrays_to_concatenate.append(clock_data)
+            arrays_to_concatenate.append(clock_data) 
     
-    clock_data = np.concatenate(arrays_to_concatenate)
-    
-    try:
-        clock_data = clock_data.reshape((-1, 12, 100))
-    except:
-        print('ERROR: Cannot reshape loaded and concatenated OnixAnalogClock binary files into [-1, 12, 100] shape. Returning non-reshaped data.')
-        return clock_data
-
-    return clock_data
+    return np.concatenate(arrays_to_concatenate)
 
 def load_register_paths(dataset_path):
     
