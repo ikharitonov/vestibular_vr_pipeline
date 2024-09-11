@@ -143,7 +143,7 @@ def get_fitted_ellipse_parameters(coordinates_dict, columns_of_interest):
     # ellipse_center_points_data = (center_x, center_y)
     ellipse_parameters_data = []
     ellipse_center_points_data = []
-    for t in range(coordinates_dict['p1'].shape[0]):
+    for t in range(coordinates_dict[list(coordinates_dict.keys())[0]].shape[0]):
         reg = LsqEllipse().fit(get_eight_points_at_time(coordinates_dict, columns_of_interest, t))
         center, width, height, phi = reg.as_parameters()
         ellipse_parameters_data.append([width, height, phi])
