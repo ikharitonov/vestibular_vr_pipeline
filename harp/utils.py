@@ -93,6 +93,24 @@ def get_register_object(register_number, harp_board='h1'):
     }
     return reference_dict[harp_board][register_number]
 
+def read_exp_events(path):
+    filenames = os.listdir(path/'ExperimentEvents')
+    filenames = [x for x in filenames if x[:16]=='ExperimentEvents'] # filter out other (hidden) files
+    sorted_filenames = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in filenames])).sort_values()
+    read_dfs = []
+    for row in sorted_filenames:
+        read_dfs.append(pd.read_csv(path/'ExperimentEvents'/f'ExperimentEvents_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv'))
+    return pd.concat(read_dfs).reset_index().drop(columns='index')
+
+def read_onix_digital(path):
+    filenames = os.listdir(path/'OnixDigital')
+    filenames = [x for x in filenames if x[:11]=='OnixDigital'] # filter out other (hidden) files
+    sorted_filenames = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in filenames])).sort_values()
+    read_dfs = []
+    for row in sorted_filenames:
+        read_dfs.append(pd.read_csv(path/'OnixDigital'/f'OnixDigital_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv'))
+    return pd.concat(read_dfs).reset_index().drop(columns='index')
+
 def read_photodiode(dataset_path):
     # https://github.com/neurogears/vestibular-vr/blob/benchmark-analysis/Python/vestibular-vr/analysis/round_trip.py
     arrays_to_concatenate = []
