@@ -162,6 +162,11 @@ def read_clock(dataset_path):
     
     return np.concatenate(arrays_to_concatenate)
 
+def read_fluorescence(photometry_data_path):
+    Fluorescence = pd.read_csv(photometry_data_path/'Fluorescence.csv', skiprows=1, index_col=False)
+    Fluorescence = Fluorescence.drop(columns='Unnamed: 5')
+    return Fluorescence
+
 def load_register_paths(dataset_path):
     
     if not os.path.exists(dataset_path/'HarpDataH1') or not os.path.exists(dataset_path/'HarpDataH2'):
@@ -211,4 +216,4 @@ def load_registers(dataset_path):
             
     print('Successfully loaded.')
     
-    return h1_data_streams, h2_data_streams
+    return {'H1': h1_data_streams, 'H2': h2_data_streams}
