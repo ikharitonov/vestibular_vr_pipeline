@@ -1,7 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
-import utils
+from . import utils
 import matplotlib.pyplot as plt
 import copy
 from datetime import timedelta
@@ -30,16 +30,6 @@ def get_timepoint_info(registers_dict, print_all=False):
             joint_last_timestamps = joint_last_timestamps + [register]
     joint_last_timestamps = pd.DataFrame(joint_last_timestamps)
     
-#     first_timestamps_h1 = {k:v.index[0] for k,v in stream_tuple[0].items()}
-#     first_timestamps_h2 = {k:v.index[0] for k,v in stream_tuple[1].items()}
-#     first_timestamps_other = {k:v.index[0] for k,v in stream_tuple[2].items()}
-#     joint_first_timestamps = pd.DataFrame(list(first_timestamps_h1.values()) + list(first_timestamps_h2.values()) + list(first_timestamps_other.values()))
-    
-#     last_timestamps_h1 = {k:v.index[-1] for k,v in stream_tuple[0].items()}
-#     last_timestamps_h2 = {k:v.index[-1] for k,v in stream_tuple[1].items()}
-#     last_timestamps_other = {k:v.index[-1] for k,v in stream_tuple[2].items()}
-#     joint_last_timestamps = pd.DataFrame(list(last_timestamps_h1.values()) + list(last_timestamps_h2.values()) + list(last_timestamps_other.values()))
-    
     global_first_timestamp = joint_first_timestamps.iloc[joint_first_timestamps[0].argmin()][0]
     global_last_timestamp = joint_last_timestamps.iloc[joint_last_timestamps[0].argmax()][0]
     
@@ -52,18 +42,6 @@ def get_timepoint_info(registers_dict, print_all=False):
             print(f'\n{source_name}')
             for key in first_timestamps[source_name].keys():
                 print(f'{key}: \n\tfirst  {first_timestamps[source_name][key]} \n\tlast   {last_timestamps[source_name][key]} \n\tlength {last_timestamps[source_name][key] - first_timestamps[source_name][key]} \n\tmean difference between timestamps {registers_dict[source_name][key].index.diff().mean()}')
-        
-#         print('\nH1:')
-#         for key in first_timestamps_h1.keys():
-#             print(f'{key}: \n\tfirst  {first_timestamps_h1[key]} \n\tlast   {last_timestamps_h1[key]} \n\tlength {last_timestamps_h1[key] - first_timestamps_h1[key]}')
-        
-#         print('\nH2:')
-#         for key in first_timestamps_h2.keys():
-#             print(f'{key}: \n\tfirst  {first_timestamps_h2[key]} \n\tlast   {last_timestamps_h2[key]} \n\tlength {last_timestamps_h2[key] - first_timestamps_h2[key]}')
-        
-#         print('\nOther:')
-#         for key in first_timestamps_other.keys():
-#             print(f'{key}: \n\tfirst  {first_timestamps_other[key]} \n\tlast   {last_timestamps_other[key]} \n\tlength {last_timestamps_other[key] - first_timestamps_other[key]}')
     
     return global_first_timestamp, global_last_timestamp, first_timestamps, last_timestamps
 
@@ -122,16 +100,6 @@ def plot_detail(data_stream_df, dataset_name, register, sample_num_to_plot=25):
     ax[0][0].set_ylabel('Signal Magnitude')
     ax[0][0].set_xticklabels(ax[0][0].get_xticklabels(), rotation=-45)
     ax[0][0].grid()
-    
-#     freq, psd = compute_Lomb_Scargle_psd(data_stream_df)
-#     freq, psd_resampled = compute_Lomb_Scargle_psd(resampled_data_stream_df)
-#     ax[0][1].plot(freq, psd, alpha=0.75)
-#     ax[0][1].plot(freq, psd_resampled, alpha=0.75)
-#     ax[0][1].set_title('Lomb Scargle periodogram')
-#     ax[0][1].set_xlabel('Frequency')
-#     ax[0][1].set_ylabel('Power Spectral Density')
-#     ax[0][1].legend(['Original', 'Resampled'])
-#     ax[0][1].grid()
     
     ax[1][0].plot(data_stream_df[:sample_num_to_plot], alpha=0.75)
     ax[1][0].scatter(data_stream_df[:sample_num_to_plot].index, data_stream_df[:sample_num_to_plot], s=25)
@@ -217,10 +185,19 @@ def reformat_dataframe(input_df, name, index_column_name='Seconds', data_column_
                           index=input_df[index_column_name].apply(convert_seconds_to_timestamps), 
                           name=name)
 
-def add_to_streams(streams, new_stream, new_stream_name):
-    if not 'Non-HARP' in streams.keys():
-        streams['Non-HARP'] = {}
+def convert_arrays_to_dataframe(list_of_names, list_of_arrays):
+    return pd.DataFrame({list_of_names[i]: list_of_arrays[i] for i in range(len(list_of_names))})
+
+def add_stream(streams, source_name, new_stream, new_stream_name):
+    if not source_name in streams.keys():
+        streams[source_name] = {}
         
-    streams['Non-HARP'][new_stream_name] = new_stream
+    streams[source_name][new_stream_name] = new_stream
     
+    return streams
+
+def reformat_and_add_many_streams(streams, dataframe, source_name, stream_names):
+    for stream_name in stream_names:
+        new_stream = reformat_dataframe(dataframe, stream_name, index_column_name='Seconds', data_column_name=stream_name)
+        streams = add_stream(streams, source_name, new_stream, stream_name)
     return streams
