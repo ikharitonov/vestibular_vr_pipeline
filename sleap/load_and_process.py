@@ -1,10 +1,104 @@
+import os
 import numpy as np
 import pandas as pd
 from ellipse import LsqEllipse
 from scipy.ndimage import median_filter
 
-def load_df(path):
+def load_df(path, filename):
     return pd.read_csv(path)
+
+def fill_with_empty_rows_based_on_index(df, new_index_column_name='frame_idx'):
+    
+    complete_index = pd.Series(range(0, df[new_index_column_name].max() + 1))
+    df.set_index(new_index_column_name, inplace=True)
+    df = df.reindex(complete_index, fill_value=np.nan)
+    df.reset_index(inplace=True)
+    df.rename(columns={'index': new_index_column_name}, inplace=True)
+    
+    return df
+
+def load_videography_data(path):
+    
+    print('INFO:')
+    print('load_and_process.load_videography_data() function expects the following format of SLEAP outputs:')
+    print('"VideoData1_1904-01-01T00-00-00.sleap.csv"')
+    print('"VideoData1_1904-01-01T23-59-59.sleap.csv"')
+    print('"..."')
+    print('Please make sure to rename SLEAP files if they are not already following this convention.')
+    print('\n')
+    print('RESULTS:')
+    
+    # Listing filenames in the folders
+    vd1_files, read_vd1_dfs, read_vd1_sleap_dfs = [], [], []
+    vd2_files, read_vd2_dfs, read_vd2_sleap_dfs = [], [], []
+    
+    for e in os.listdir(path/'VideoData1'):
+        if not '.avi' in e and not '.sleap' in e:
+            vd1_files.append(e)
+    for e in os.listdir(path/'VideoData2'):
+        if not '.avi' in e and not '.sleap' in e:
+            vd2_files.append(e)
+    
+    vd1_has_sleap, vd2_has_sleap = False, False
+    for e in os.listdir(path/'VideoData1'):
+        if '.sleap' in e: vd1_has_sleap = True
+    for e in os.listdir(path/'VideoData2'):
+        if '.sleap' in e : vd2_has_sleap = True
+    print(f'Outputs of SLEAP found in VideoData1: {vd1_has_sleap}')
+    print(f'Outputs of SLEAP found in VideoData2: {vd2_has_sleap}')
+    
+    # Sorting filenames chronologically
+    sorted_vd1_files = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in vd1_files])).sort_values()
+    sorted_vd2_files = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in vd2_files])).sort_values()
+    
+    print(f'Found .csv VideoData logs timestamped at:')
+    for ts in sorted_vd1_files.values:
+        print('-',ts)
+    
+    # Reading the csv files in the chronological order
+    last_sleap_frame_idx_vd1, last_sleap_frame_idx_vd2 = 0, 0 # to add to consecutive SLEAP logs because frame_idx restarts at 0 in each file
+    for row in sorted_vd1_files:
+        read_vd1_dfs.append(pd.read_csv(path/'VideoData1'/f'VideoData1_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv'))
+        if vd1_has_sleap: 
+            read_vd1_sleap_dfs.append(pd.read_csv(path/'VideoData1'/f'VideoData1_{row.strftime('%Y-%m-%dT%H-%M-%S')}.sleap.csv'))
+            read_vd1_sleap_dfs[-1]['frame_idx'] = read_vd1_sleap_dfs[-1]['frame_idx'] + last_sleap_frame_idx_vd1
+            last_sleap_frame_idx_vd1 = read_vd1_sleap_dfs[-1]['frame_idx'].iloc[-1] + 1
+    for row in sorted_vd2_files:
+        read_vd2_dfs.append(pd.read_csv(path/'VideoData2'/f'VideoData2_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv'))
+        if vd2_has_sleap: 
+            read_vd2_sleap_dfs.append(pd.read_csv(path/'VideoData2'/f'VideoData2_{row.strftime('%Y-%m-%dT%H-%M-%S')}.sleap.csv'))
+            read_vd2_sleap_dfs[-1]['frame_idx'] = read_vd2_sleap_dfs[-1]['frame_idx'] + last_sleap_frame_idx_vd2
+            last_sleap_frame_idx_vd2 = read_vd2_sleap_dfs[-1]['frame_idx'].iloc[-1] + 1
+    read_vd1_dfs = pd.concat(read_vd1_dfs).reset_index().drop(columns='index')
+    read_vd2_dfs = pd.concat(read_vd2_dfs).reset_index().drop(columns='index')
+    if vd1_has_sleap: read_vd1_sleap_dfs = pd.concat(read_vd1_sleap_dfs).reset_index().drop(columns='index')
+    if vd2_has_sleap: read_vd2_sleap_dfs = pd.concat(read_vd2_sleap_dfs).reset_index().drop(columns='index')
+        
+    print('Reading dataframes finished.')
+    
+    read_vd1_dfs = read_vd1_dfs.rename(columns={"Value.ChunkData.FrameID": "frame_idx"})
+    read_vd2_dfs = read_vd2_dfs.rename(columns={"Value.ChunkData.FrameID": "frame_idx"})
+    
+    # Resetting frame_idx to start at 0
+    read_vd1_dfs['frame_idx'] = read_vd1_dfs['frame_idx'] - read_vd1_dfs['frame_idx'].iloc[0]
+    read_vd2_dfs['frame_idx'] = read_vd2_dfs['frame_idx'] - read_vd2_dfs['frame_idx'].iloc[0]
+    
+    # Filling in the skipped frames (if there are any) with NaN rows
+    if vd1_has_sleap:
+        if read_vd1_sleap_dfs.index[-1] != read_vd1_sleap_dfs['frame_idx'].iloc[-1]:
+            print(f'VideoData1 SLEAP output: {read_vd1_sleap_dfs['frame_idx'].iloc[-1] + 1} frames registered, but {read_vd1_sleap_dfs.index[-1] + 1} rows found inside file. Filling with empty rows.')
+            read_vd1_sleap_dfs = fill_with_empty_rows_based_on_index(read_vd1_sleap_dfs)
+    if vd2_has_sleap:
+        if read_vd2_sleap_dfs.index[-1] != read_vd2_sleap_dfs['frame_idx'].iloc[-1]:
+            print(f'VideoData2 SLEAP output: {read_vd2_sleap_dfs['frame_idx'].iloc[-1] + 1} frames registered, but {read_vd2_sleap_dfs.index[-1] + 1} rows found inside file. Filling with empty rows.')
+            read_vd2_sleap_dfs = fill_with_empty_rows_based_on_index(read_vd2_sleap_dfs)
+    
+    # Merging VideoData csv files and sleap outputs to get access to the HARP timestamps
+    vd1_out, vd2_out = read_vd1_dfs[['frame_idx', 'Seconds']], read_vd2_dfs[['frame_idx', 'Seconds']]
+    if vd1_has_sleap: vd1_out = pd.merge(read_vd1_dfs[['frame_idx', 'Seconds']], read_vd1_sleap_dfs, on='frame_idx')
+    if vd2_has_sleap: vd2_out = pd.merge(read_vd2_dfs[['frame_idx', 'Seconds']], read_vd2_sleap_dfs, on='frame_idx')
+    
+    return vd1_out, vd2_out
 
 def recalculated_coordinates(point_name, df, reference_subtraced_displacements_dict):
     # Recalculates coordinates of a point at each frame, applying the referenced displacements to the coordinates of the very first frame.
