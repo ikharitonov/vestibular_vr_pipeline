@@ -58,15 +58,15 @@ def load_videography_data(path):
     # Reading the csv files in the chronological order
     last_sleap_frame_idx_vd1, last_sleap_frame_idx_vd2 = 0, 0 # to add to consecutive SLEAP logs because frame_idx restarts at 0 in each file
     for row in sorted_vd1_files:
-        read_vd1_dfs.append(pd.read_csv(path/'VideoData1'/f'VideoData1_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv'))
+        read_vd1_dfs.append(pd.read_csv(path/'VideoData1'/f"VideoData1_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv"))
         if vd1_has_sleap: 
             read_vd1_sleap_dfs.append(pd.read_csv(path/'VideoData1'/f'VideoData1_{row.strftime('%Y-%m-%dT%H-%M-%S')}.sleap.csv'))
             read_vd1_sleap_dfs[-1]['frame_idx'] = read_vd1_sleap_dfs[-1]['frame_idx'] + last_sleap_frame_idx_vd1
             last_sleap_frame_idx_vd1 = read_vd1_sleap_dfs[-1]['frame_idx'].iloc[-1] + 1
     for row in sorted_vd2_files:
-        read_vd2_dfs.append(pd.read_csv(path/'VideoData2'/f'VideoData2_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv'))
+        read_vd2_dfs.append(pd.read_csv(path/'VideoData2'/f"VideoData2_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv"))
         if vd2_has_sleap: 
-            read_vd2_sleap_dfs.append(pd.read_csv(path/'VideoData2'/f'VideoData2_{row.strftime('%Y-%m-%dT%H-%M-%S')}.sleap.csv'))
+            read_vd2_sleap_dfs.append(pd.read_csv(path/'VideoData2'/f"VideoData2_{row.strftime('%Y-%m-%dT%H-%M-%S')}.sleap.csv"))
             read_vd2_sleap_dfs[-1]['frame_idx'] = read_vd2_sleap_dfs[-1]['frame_idx'] + last_sleap_frame_idx_vd2
             last_sleap_frame_idx_vd2 = read_vd2_sleap_dfs[-1]['frame_idx'].iloc[-1] + 1
     read_vd1_dfs = pd.concat(read_vd1_dfs).reset_index().drop(columns='index')
