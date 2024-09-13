@@ -4,7 +4,7 @@ import pandas as pd
 from ellipse import LsqEllipse
 from scipy.ndimage import median_filter
 
-def load_df(path, filename):
+def load_df(path):
     return pd.read_csv(path)
 
 def fill_with_empty_rows_based_on_index(df, new_index_column_name='frame_idx'):
