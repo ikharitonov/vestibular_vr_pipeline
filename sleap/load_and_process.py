@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 from ellipse import LsqEllipse
 from scipy.ndimage import median_filter
+from . import horizontal_flip_script
 
 def load_df(path):
     return pd.read_csv(path)
@@ -264,3 +265,12 @@ def get_centered_coordinates_dict(coordinates_dict, center_point):
 
 def get_rotated_coordinates_dict(coordinates_dict, theta):
     return {point: rotate_points(arr, theta) for point, arr in coordinates_dict.items()}
+
+def create_flipped_videos(path, what_to_flip='VideoData1'):
+    
+    if len([x for x in os.listdir(path / what_to_flip) if '.flipped.' in x]) != 0:
+        print(f'Flipped videos already exist in {path/what_to_flip}. Exiting.')
+    else:
+        avis = [x for x in os.listdir(path / what_to_flip) if x[-4:] == '.avi']
+        for avi in avis:
+            horizontal_flip_script.horizontal_flip_avi(path / what_to_flip / avi, path / what_to_flip / f'{avi[:-4]}.flipped.avi')
