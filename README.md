@@ -17,3 +17,9 @@ The code mainly relies on <a href=https://github.com/harp-tech/harp-python>harp-
 ### Proposed approach to project structure
 
 ## Repository contents
+
+## Functions available
+
+### HARP
+
+### SLEAP
