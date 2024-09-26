@@ -5,9 +5,33 @@ from . import utils
 import matplotlib.pyplot as plt
 import copy
 from datetime import timedelta
+import aeon.io.api as api
 
 def resample_stream(data_stream_df, resampling_period='0.1ms', method='linear'):
     return data_stream_df.resample(resampling_period).last().interpolate(method=method)
+
+def resample_index(index, freq):
+    """Resamples each day in the daily `index` to the specified `freq`.
+
+    Parameters
+    ----------
+    index : pd.DatetimeIndex
+        The daily-frequency index to resample
+    freq : str
+        A pandas frequency string which should be higher than daily
+
+    Returns
+    -------
+    pd.DatetimeIndex
+        The resampled index
+
+    """
+    assert isinstance(index, pd.DatetimeIndex)
+    start_date = index.min()
+    end_date = index.max() + pd.DateOffset(days=1)
+    resampled_index = pd.date_range(start_date, end_date, freq=freq)[:-1]
+    series = pd.Series(resampled_index, resampled_index.floor('D'))
+    return pd.DatetimeIndex(series.loc[index].values)
 
 def get_timepoint_info(registers_dict, print_all=False):
     
@@ -177,13 +201,22 @@ def align_fluorescence_first_approach(fluorescence_df, onixdigital_df):
     
     return fluorescence_df
 
-def reformat_dataframe(input_df, name, index_column_name='Seconds', data_column_name='Data'):
-    def convert_seconds_to_timestamps(seconds_input):
+def convert_datetime_to_seconds(timestamp_input):
+    return (timestamp_input - utils.harp.REFERENCE_EPOCH).total_seconds()
+
+def convert_seconds_to_datetime(seconds_input):
         return utils.harp.REFERENCE_EPOCH + timedelta(seconds=seconds_input)
 
-    return pd.Series(data=input_df[data_column_name].values, 
-                          index=input_df[index_column_name].apply(convert_seconds_to_timestamps), 
+def reformat_dataframe(input_df, name, index_column_name='Seconds', data_column_name='Data'):
+
+    if input_df[index_column_name].values.dtype == np.dtype('<M8[ns]'):
+        return pd.Series(data=input_df[data_column_name].values, 
+                          index=input_df[index_column_name], 
                           name=name)
+    else:
+        return pd.Series(data=input_df[data_column_name].values, 
+                            index=input_df[index_column_name].apply(convert_seconds_to_datetime), 
+                            name=name)
 
 def convert_arrays_to_dataframe(list_of_names, list_of_arrays):
     return pd.DataFrame({list_of_names[i]: list_of_arrays[i] for i in range(len(list_of_names))})
@@ -196,8 +229,61 @@ def add_stream(streams, source_name, new_stream, new_stream_name):
     
     return streams
 
-def reformat_and_add_many_streams(streams, dataframe, source_name, stream_names):
+def reformat_and_add_many_streams(streams, dataframe, source_name, stream_names, index_column_name='Seconds'):
     for stream_name in stream_names:
-        new_stream = reformat_dataframe(dataframe, stream_name, index_column_name='Seconds', data_column_name=stream_name)
+        new_stream = reformat_dataframe(dataframe, stream_name, index_column_name, data_column_name=stream_name)
         streams = add_stream(streams, source_name, new_stream, stream_name)
     return streams
+
+
+def calculate_conversions_second_approach(data_path, photometry_path, verbose=True):
+
+    OnixAnalogClock, OnixAnalogFrameCount, OnixDigital = utils.read_OnixAnalogClock(data_path), utils.read_OnixAnalogFrameCount(data_path), utils.read_OnixDigital(data_path)
+
+    # find time mapping/warping between onix and harp clock
+    upsample = np.array(OnixAnalogFrameCount["Seconds"]).repeat(100, axis=0)[0:-100]
+
+    # define conversion functions between timestamps (onix to harp)
+    o_m, o_b = np.polyfit(OnixAnalogClock, upsample, 1)
+    onix_to_harp_seconds = lambda x: x*o_m + o_b
+    onix_to_harp_timestamp = lambda x: api.aeon(onix_to_harp_seconds(x))
+    harp_to_onix_clock = lambda x: (x - o_b) / o_m
+
+    PhotometryEvents = utils.read_fluorescence_events(photometry_path)
+
+    # define conversion functions between timestamps (onix to harp)
+    m, b = np.polyfit(PhotometryEvents['TimeStamp'].values, OnixDigital["Value.Clock"], 1)
+    photometry_to_onix_time = lambda x: x*m + b
+    photometry_to_harp_time = lambda x: onix_to_harp_timestamp(photometry_to_onix_time(x))
+    onix_time_to_photometry = lambda x: (x - b) / m
+
+    if verbose:
+        print('Following conversion functions calculated:\n\t"onix_to_harp_timestamp"\n\t"harp_to_onix_clock"\n\t"photometry_to_harp_time"\n\t"onix_time_to_photometry"')
+        print('\nUsage example 1: plotting photodiode signal for three halts')
+        print('\n\t# Loading data')
+        print('\tOnixAnalogClock = utils.read_OnixAnalogClock(data_path)\n\tOnixAnalogData = utils.read_OnixAnalogData(data_path)\n\tExperimentEvents = utils.read_ExperimentEvents(data_path)')
+        print('\n\t# Selecting desired HARP times, applying conversion to ONIX time')
+        print("\tstart_harp_time_of_halt_one = ExperimentEvents[ExperimentEvents.Value=='Apply halt: 1s'].iloc[0].Seconds\n\tstart_harp_time_of_halt_four = ExperimentEvents[ExperimentEvents.Value=='Apply halt: 1s'].iloc[3].Seconds")
+        print("\tstart_onix_time = conversions['harp_to_onix_clock'](start_harp_time_of_halt_one - 1)\n\tend_onix_time = conversions['harp_to_onix_clock'](start_harp_time_of_halt_four)")
+        print('\n\t# Selecting photodiode times and data within the range, converting back to HARP and plotting')
+        print('\tindices = np.where(np.logical_and(OnixAnalogClock >= start_onix_time, OnixAnalogClock <= end_onix_time))')
+        print("\tselected_harp_times = conversions['onix_to_harp_timestamp'](OnixAnalogClock[indices])\n\tselected_photodiode_data = OnixAnalogData[indices]")
+        print('\tplt.plot(selected_harp_times, selected_photodiode_data[:, 0])')
+        print('\nUsage example 2: plot photometry in the same time range')
+        print('\n\tPhotometry = utils.read_fluorescence(photometry_path)')
+        print("\n\tstart_photometry_time = conversions['onix_time_to_photometry'](start_onix_time)")
+        print("\tend_photometry_time = conversions['onix_time_to_photometry'](end_onix_time)")
+        print("\n\tselected_photometry_data = Photometry[Photometry['TimeStamp'].between(start_photometry_time, end_photometry_time)]['CH1-470'].values")
+        print("\tselected_harp_times = conversions['photometry_to_harp_time'](Photometry[Photometry['TimeStamp'].between(start_photometry_time, end_photometry_time)]['TimeStamp'])")
+        print('\tplt.plot(selected_harp_times, selected_photometry_data)')
+        print("\nIt is best not to convert the whole OnixAnalogClock array to HARP timestamps at once (e.g. conversions['onix_to_harp_timestamp'](OnixAnalogClock)). It's faster to first find the necessary timestamps and indices in ONIX format as shown above.")
+
+
+    return {"onix_to_harp_timestamp": onix_to_harp_timestamp, "photometry_to_harp_time": photometry_to_harp_time, "harp_to_onix_clock": harp_to_onix_clock, "onix_time_to_photometry": onix_time_to_photometry}
+
+def select_from_photodiode_data(OnixAnalogClock, OnixAnalogData, hard_start_time, harp_end_time, conversions):
+    start_onix_time = conversions['harp_to_onix_clock'](hard_start_time)
+    end_onix_time = conversions['harp_to_onix_clock'](harp_end_time)
+    indices = np.where(np.logical_and(OnixAnalogClock >= start_onix_time, OnixAnalogClock <= end_onix_time))
+
+    return conversions['onix_to_harp_timestamp'](OnixAnalogClock[indices]), OnixAnalogData[indices]
