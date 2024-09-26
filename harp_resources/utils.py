@@ -38,16 +38,26 @@ def get_register_object(register_number, harp_board='h1'):
     }
     return reference_dict[harp_board][register_number]
 
-def read_exp_events(path):
+def read_ExperimentEvents(path):
     filenames = os.listdir(path/'ExperimentEvents')
     filenames = [x for x in filenames if x[:16]=='ExperimentEvents'] # filter out other (hidden) files
     sorted_filenames = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in filenames])).sort_values()
     read_dfs = []
-    for row in sorted_filenames:
-        read_dfs.append(pd.read_csv(path/'ExperimentEvents'/f"ExperimentEvents_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv"))
-    return pd.concat(read_dfs).reset_index().drop(columns='index')
+    try:
+        for row in sorted_filenames:
+            read_dfs.append(pd.read_csv(path/'ExperimentEvents'/f"ExperimentEvents_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv"))
+        return pd.concat(read_dfs).reset_index().drop(columns='index')
+    except pd.errors.ParserError as e:
+        filename = f"ExperimentEvents_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv"
+        print(f'Tokenisation failed for file "{filename}".\n')
+        print(f'Exact description of error: {e}')
+        print('Likely due to extra commas in the "Value" column of ExperimentEvents. Please manually remove and run again.')
+        return None
+    except Exception as e:
+        print('Reading failed:', e)
+        return None
 
-def read_onix_digital(path):
+def read_OnixDigital(path):
     filenames = os.listdir(path/'OnixDigital')
     filenames = [x for x in filenames if x[:11]=='OnixDigital'] # filter out other (hidden) files
     sorted_filenames = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in filenames])).sort_values()
@@ -56,7 +66,16 @@ def read_onix_digital(path):
         read_dfs.append(pd.read_csv(path/'OnixDigital'/f"OnixDigital_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv"))
     return pd.concat(read_dfs).reset_index().drop(columns='index')
 
-def read_photodiode(dataset_path, buffer_size=100):
+def read_OnixAnalogFrameCount(path):
+    filenames = os.listdir(path/'OnixAnalogFrameCount')
+    filenames = [x for x in filenames if x[:20]=='OnixAnalogFrameCount'] # filter out other (hidden) files
+    sorted_filenames = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in filenames])).sort_values()
+    read_dfs = []
+    for row in sorted_filenames:
+        read_dfs.append(pd.read_csv(path/'OnixAnalogFrameCount'/f"OnixAnalogFrameCount_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv"))
+    return pd.concat(read_dfs).reset_index().drop(columns='index')
+
+def read_OnixAnalogData(dataset_path):
     # https://github.com/neurogears/vestibular-vr/blob/benchmark-analysis/Python/vestibular-vr/analysis/round_trip.py
     # https://open-ephys.github.io/onix-docs/Software%20Guide/Bonsai.ONIX/Nodes/AnalogIODevice.html
     arrays_to_concatenate = []
@@ -70,7 +89,13 @@ def read_photodiode(dataset_path, buffer_size=100):
     
     for filename in files_to_read:
         with open(dataset_path/'OnixAnalogData'/filename, 'rb') as f:
-            photo_diode = np.fromfile(f, dtype=np.int16).astype(np.single)
+            photo_diode = np.fromfile(f, dtype=np.int16)
+
+            try:
+                photo_diode = np.reshape(photo_diode, (-1,12))
+            except:
+                print(f'ERROR: Cannot reshape loaded "{filename}" binary file into [-1, 12] shape. Continuing with non-reshaped data.')
+            
             arrays_to_concatenate.append(photo_diode)
 
     photo_diode = np.concatenate(arrays_to_concatenate)
@@ -82,15 +107,15 @@ def read_photodiode(dataset_path, buffer_size=100):
 #     photo_diode[np.where(photo_diode <= pd1_thresh)] = 0
 #     photo_diode[np.where(photo_diode > pd1_thresh)] = 1
     
-    try:
-        photo_diode = photo_diode.reshape((-1, 12, buffer_size))
-    except:
-        print('ERROR: Cannot reshape loaded and concatenated OnixAnalogData binary files into [-1, 12, 100] shape. Returning non-reshaped data.')
-        return photo_diode
+    # try:
+    #     photo_diode = photo_diode.reshape((-1, 12, buffer_size))
+    # except:
+    #     print('ERROR: Cannot reshape loaded and concatenated OnixAnalogData binary files into [-1, 12, 100] shape. Returning non-reshaped data.')
+    #     return photo_diode
 
     return photo_diode
 
-def read_clock(dataset_path):
+def read_OnixAnalogClock(dataset_path):
     arrays_to_concatenate = []
     files_to_read = [x for x in os.listdir(dataset_path/'OnixAnalogClock')]
     
@@ -102,7 +127,7 @@ def read_clock(dataset_path):
     
     for filename in files_to_read:
         with open(dataset_path/'OnixAnalogClock'/filename, 'rb') as f:
-            clock_data = np.fromfile(f, dtype=np.int16).astype(np.single)
+            clock_data = np.fromfile(f, dtype=np.uint64)
             arrays_to_concatenate.append(clock_data) 
     
     return np.concatenate(arrays_to_concatenate)
@@ -111,6 +136,10 @@ def read_fluorescence(photometry_data_path):
     Fluorescence = pd.read_csv(photometry_data_path/'Fluorescence.csv', skiprows=1, index_col=False)
     Fluorescence = Fluorescence.drop(columns='Unnamed: 5')
     return Fluorescence
+
+def read_fluorescence_events(photometry_data_path):
+    Events = pd.read_csv(photometry_data_path/'Events.csv', skiprows=0, index_col=False)
+    return Events
 
 def load_register_paths(dataset_path):
     
