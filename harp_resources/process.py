@@ -1,4 +1,4 @@
-import os
+from time import time
 import numpy as np
 import pandas as pd
 from . import utils
@@ -70,6 +70,8 @@ def get_timepoint_info(registers_dict, print_all=False):
     return global_first_timestamp, global_last_timestamp, first_timestamps, last_timestamps
 
 def pad_and_resample(streams_dict, resampling_period='0.1ms', method='linear'):
+
+    start_time = time()
     
     streams_dict = copy.deepcopy(streams_dict)
     
@@ -98,6 +100,8 @@ def pad_and_resample(streams_dict, resampling_period='0.1ms', method='linear'):
             # Resampling and interpolation
             streams_dict[source_name][stream_name] = resample_stream(stream, resampling_period=resampling_period, method=method)
     
+    print(f'Padding and resampling finished in {time() - start_time:.2f} seconds.')
+
     return streams_dict
 
 def compute_Lomb_Scargle_psd(data_df, freq_min=0.001, freq_max=10**6, num_freqs=1000, normalise=True):
@@ -180,6 +184,8 @@ def align_fluorescence_first_approach(fluorescence_df, onixdigital_df):
     # - Estimating the very first and the very last 'Seconds' value based on timestamps of the photometry software ('TimeStamp' column)
     # - Applying default Pandas interpolation
     
+    start_time = time()
+
     fluorescence_df = copy.deepcopy(fluorescence_df)
     
     # Adding a new column
@@ -198,6 +204,8 @@ def align_fluorescence_first_approach(fluorescence_df, onixdigital_df):
     fluorescence_df.loc[-1, 'Seconds'] = last_val_to_insert
     
     fluorescence_df[['Seconds']] = fluorescence_df[['Seconds']].interpolate()
+
+    print(f'Fluorescence alignment finished in {time() - start_time:.2f} seconds.')
     
     return fluorescence_df
 
@@ -237,6 +245,8 @@ def reformat_and_add_many_streams(streams, dataframe, source_name, stream_names,
 
 
 def calculate_conversions_second_approach(data_path, photometry_path, verbose=True):
+
+    start_time = time()
 
     OnixAnalogClock, OnixAnalogFrameCount, OnixDigital = utils.read_OnixAnalogClock(data_path), utils.read_OnixAnalogFrameCount(data_path), utils.read_OnixDigital(data_path)
 
@@ -279,11 +289,20 @@ def calculate_conversions_second_approach(data_path, photometry_path, verbose=Tr
         print("\nIt is best not to convert the whole OnixAnalogClock array to HARP timestamps at once (e.g. conversions['onix_to_harp_timestamp'](OnixAnalogClock)). It's faster to first find the necessary timestamps and indices in ONIX format as shown above.")
 
 
+    print(f'Calculation of conversions finished in {time() - start_time:.2f} seconds.')
+
     return {"onix_to_harp_timestamp": onix_to_harp_timestamp, "photometry_to_harp_time": photometry_to_harp_time, "harp_to_onix_clock": harp_to_onix_clock, "onix_time_to_photometry": onix_time_to_photometry}
 
 def select_from_photodiode_data(OnixAnalogClock, OnixAnalogData, hard_start_time, harp_end_time, conversions):
+
+    start_time = time()
+
     start_onix_time = conversions['harp_to_onix_clock'](hard_start_time)
     end_onix_time = conversions['harp_to_onix_clock'](harp_end_time)
     indices = np.where(np.logical_and(OnixAnalogClock >= start_onix_time, OnixAnalogClock <= end_onix_time))
 
-    return conversions['onix_to_harp_timestamp'](OnixAnalogClock[indices]), OnixAnalogData[indices]
+    x, y = conversions['onix_to_harp_timestamp'](OnixAnalogClock[indices]), OnixAnalogData[indices]
+
+    print(f'Selection of photodiode data finished in {time() - start_time:.2f} seconds.')
+
+    return x, y

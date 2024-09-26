@@ -4,6 +4,7 @@ import pandas as pd
 from glob import glob
 from pathlib import Path
 import os
+from time import time
 from aeon.io.reader import Reader
 
 def load(reader: Reader, root: Path) -> pd.DataFrame:
@@ -78,6 +79,7 @@ def read_OnixAnalogFrameCount(path):
 def read_OnixAnalogData(dataset_path, binarise=False):
     # https://github.com/neurogears/vestibular-vr/blob/benchmark-analysis/Python/vestibular-vr/analysis/round_trip.py
     # https://open-ephys.github.io/onix-docs/Software%20Guide/Bonsai.ONIX/Nodes/AnalogIODevice.html
+    start_time = time()
     arrays_to_concatenate = []
     files_to_read = [x for x in os.listdir(dataset_path/'OnixAnalogData')]
     
@@ -106,9 +108,12 @@ def read_OnixAnalogData(dataset_path, binarise=False):
         photo_diode[np.where(photo_diode > PHOTODIODE_THRESHOLD)] = 1
         photo_diode = photo_diode.astype(bool)
 
+    print(f'OnixAnalogData loaded in {time() - start_time:.2f} seconds.')
+
     return photo_diode
 
 def read_OnixAnalogClock(dataset_path):
+    start_time = time()
     arrays_to_concatenate = []
     files_to_read = [x for x in os.listdir(dataset_path/'OnixAnalogClock')]
     
@@ -123,7 +128,11 @@ def read_OnixAnalogClock(dataset_path):
             clock_data = np.fromfile(f, dtype=np.uint64)
             arrays_to_concatenate.append(clock_data) 
     
-    return np.concatenate(arrays_to_concatenate)
+    output = np.concatenate(arrays_to_concatenate)
+
+    print(f'OnixAnalogData loaded in {time() - start_time:.2f} seconds.')
+
+    return output
 
 def read_fluorescence(photometry_data_path):
     Fluorescence = pd.read_csv(photometry_data_path/'Fluorescence.csv', skiprows=1, index_col=False)
@@ -156,6 +165,8 @@ def load_register_paths(dataset_path):
     return h1_dict, h2_dict
 
 def load_registers(dataset_path):
+
+    start_time = time()
     
     h1_dict, h2_dict = load_register_paths(dataset_path)
     
@@ -181,6 +192,6 @@ def load_registers(dataset_path):
         else:
             raise ValueError(f"Loaded data stream does not contain supported number of columns in Pandas DataFrame. Dataframe columns shape = {data_stream.columns.shape}")
             
-    print('Successfully loaded.')
+    print(f'Registers loaded in {time() - start_time:.2f} seconds.')
     
     return {'H1': h1_data_streams, 'H2': h2_data_streams}
