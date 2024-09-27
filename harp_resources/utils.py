@@ -130,7 +130,7 @@ def read_OnixAnalogClock(dataset_path):
     
     output = np.concatenate(arrays_to_concatenate)
 
-    print(f'OnixAnalogData loaded in {time() - start_time:.2f} seconds.')
+    print(f'OnixAnalogClock loaded in {time() - start_time:.2f} seconds.')
 
     return output
 
