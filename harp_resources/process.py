@@ -5,6 +5,7 @@ from . import utils
 import matplotlib.pyplot as plt
 import copy
 from datetime import timedelta
+from datetime import datetime
 import aeon.io.api as api
 
 def resample_stream(data_stream_df, resampling_period='0.1ms', method='linear'):
@@ -210,7 +211,11 @@ def align_fluorescence_first_approach(fluorescence_df, onixdigital_df):
     return fluorescence_df
 
 def convert_datetime_to_seconds(timestamp_input):
-    return (timestamp_input - utils.harp.REFERENCE_EPOCH).total_seconds()
+    if type(timestamp_input) == datetime:
+        return (timestamp_input - utils.harp.REFERENCE_EPOCH).total_seconds()
+        
+    else:
+        return timestamp_input.apply(lambda x: (x - utils.harp.REFERENCE_EPOCH).total_seconds())
 
 def convert_seconds_to_datetime(seconds_input):
         return utils.harp.REFERENCE_EPOCH + timedelta(seconds=seconds_input)
@@ -244,11 +249,12 @@ def reformat_and_add_many_streams(streams, dataframe, source_name, stream_names,
     return streams
 
 
-def calculate_conversions_second_approach(data_path, photometry_path, verbose=True):
+def calculate_conversions_second_approach(data_path, photometry_path=None, verbose=True):
 
     start_time = time()
+    output = {}
 
-    OnixAnalogClock, OnixAnalogFrameCount, OnixDigital = utils.read_OnixAnalogClock(data_path), utils.read_OnixAnalogFrameCount(data_path), utils.read_OnixDigital(data_path)
+    OnixAnalogClock, OnixAnalogFrameCount = utils.read_OnixAnalogClock(data_path), utils.read_OnixAnalogFrameCount(data_path)
 
     # find time mapping/warping between onix and harp clock
     upsample = np.array(OnixAnalogFrameCount["Seconds"]).repeat(100, axis=0)[0:-100]
@@ -259,16 +265,25 @@ def calculate_conversions_second_approach(data_path, photometry_path, verbose=Tr
     onix_to_harp_timestamp = lambda x: api.aeon(onix_to_harp_seconds(x))
     harp_to_onix_clock = lambda x: (x - o_b) / o_m
 
-    PhotometryEvents = utils.read_fluorescence_events(photometry_path)
+    output["onix_to_harp_timestamp"] = onix_to_harp_timestamp
+    output["harp_to_onix_clock"] = harp_to_onix_clock
 
-    # define conversion functions between timestamps (onix to harp)
-    m, b = np.polyfit(PhotometryEvents['TimeStamp'].values, OnixDigital["Value.Clock"], 1)
-    photometry_to_onix_time = lambda x: x*m + b
-    photometry_to_harp_time = lambda x: onix_to_harp_timestamp(photometry_to_onix_time(x))
-    onix_time_to_photometry = lambda x: (x - b) / m
+    if photometry_path:
+        OnixDigital = utils.read_OnixDigital(data_path)
+        PhotometryEvents = utils.read_fluorescence_events(photometry_path)
+
+        # define conversion functions between timestamps (onix to harp)
+        m, b = np.polyfit(PhotometryEvents['TimeStamp'].values, OnixDigital["Value.Clock"], 1)
+        photometry_to_onix_time = lambda x: x*m + b
+        photometry_to_harp_time = lambda x: onix_to_harp_timestamp(photometry_to_onix_time(x))
+        onix_time_to_photometry = lambda x: (x - b) / m
+        
+        output["photometry_to_harp_time"] = photometry_to_harp_time
+        output["onix_time_to_photometry"] = onix_time_to_photometry
 
     if verbose:
-        print('Following conversion functions calculated:\n\t"onix_to_harp_timestamp"\n\t"harp_to_onix_clock"\n\t"photometry_to_harp_time"\n\t"onix_time_to_photometry"')
+        print('Following conversion functions calculated:')
+        for k in output.keys(): print(f'\t{k}')
         print('\nUsage example 1: plotting photodiode signal for three halts')
         print('\n\t# Loading data')
         print('\tOnixAnalogClock = utils.read_OnixAnalogClock(data_path)\n\tOnixAnalogData = utils.read_OnixAnalogData(data_path)\n\tExperimentEvents = utils.read_ExperimentEvents(data_path)')
@@ -291,7 +306,7 @@ def calculate_conversions_second_approach(data_path, photometry_path, verbose=Tr
 
     print(f'Calculation of conversions finished in {time() - start_time:.2f} seconds.')
 
-    return {"onix_to_harp_timestamp": onix_to_harp_timestamp, "photometry_to_harp_time": photometry_to_harp_time, "harp_to_onix_clock": harp_to_onix_clock, "onix_time_to_photometry": onix_time_to_photometry}
+    return output
 
 def select_from_photodiode_data(OnixAnalogClock, OnixAnalogData, hard_start_time, harp_end_time, conversions):
 
