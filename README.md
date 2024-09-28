@@ -44,18 +44,18 @@ pip install harp-python
     ┣ 📜comparing_clocked_nonclocked_data.ipynb
     ┗ 📜prepare_playback_file.ipynb
 📂sleap
- ┣ 📄load_and_process.py
+ ┣ 📄load_and_process.py --> main functions for SLEAP preprocessing pipeline
  ┣ 📄add_avi_visuals.py
  ┣ 📄horizontal_flip_script.py
  ┣ 📄registration.py
  ┣ 📄upscaling.py
  ┗ 📂notebooks
     ┣ 📜batch_analysis.ipynb
-    ┣ 📜ellipse_analysis.ipynb
-    ┣ 📜jitter.ipynb
-    ┣ 📜light_reflection_motion_correction.ipynb
-    ┣ 📜saccades_analysis.ipynb
-    ┗ 📜upsampling_jitter_analysis.ipynb
+    ┣ 📜ellipse_analysis.ipynb --> visualising SLEAP preprocessing outputs
+    ┣ 📜jitter.ipynb --> quantifying jitter inherent to SLEAP
+    ┣ 📜light_reflection_motion_correction.ipynb --> segmentation of light reflection in the eye using OpenCV (unused)
+    ┣ 📜saccades_analysis.ipynb --> step by step SLEAP data preprocessing (now inside of load_and_process.py + initial saccade detection
+    ┗ 📜upsampling_jitter_analysis.ipynb --> loading SLEAP outputs from LANCZOS upsampling tests
 ```
 
 ## Functions available
