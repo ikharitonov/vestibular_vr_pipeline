@@ -30,13 +30,13 @@ pip install harp-python
 ## Repository contents
 
 ```
-📜demo_pipeline.ipynb
+📜demo_pipeline.ipynb   -->   main example of pipeline usage and synchronisation
 📜grab_figure.ipynb
 📂harp_resources
- ┣ 📄utils.py
- ┣ 📄process.py
- ┣ 📄h1-device.yml
- ┗ 📄h2-device.yml
+ ┣ 📄utils.py   -->   functions for data loading
+ ┣ 📄process.py   -->   functions for converting, resampling, padding, aligning, plotting data
+ ┣ 📄h1-device.yml   -->   H1 manifest file
+ ┗ 📄h2-device.yml   -->   H2 manifest file
  ┗ 📂notebooks
     ┣ 📜load_example.ipynb
     ┣ 📜demo_synchronisation.ipynb
