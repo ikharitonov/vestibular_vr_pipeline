@@ -44,19 +44,24 @@ pip install harp-python
     ┣ 📜comparing_clocked_nonclocked_data.ipynb
     ┗ 📜prepare_playback_file.ipynb
 📂sleap
- ┣ 📄load_and_process.py --> main functions for SLEAP preprocessing pipeline
- ┣ 📄add_avi_visuals.py
- ┣ 📄horizontal_flip_script.py
- ┣ 📄registration.py
- ┣ 📄upscaling.py
+ ┣ 📄load_and_process.py   -->   main functions for SLEAP preprocessing pipeline
+ ┣ 📄add_avi_visuals.py   -->   overlaying SLEAP points on top of the video and saving as a new one for visual inspection
+ ┣ 📄horizontal_flip_script.py   -->   flipping avi videos horizontally using OpenCV
+ ┣ 📄registration.py   -->   attempt at applying registration from CaImAn to get rid of motion artifacts (https://github.com/flatironinstitute/CaImAn/blob/main/demos/notebooks/demo_multisession_registration.ipynb)
+ ┣ 📄upscaling.py   -->   attempt at applying LANCZOS upsampling to avi videos using OpenCV to minimise SLEAP jitter
  ┗ 📂notebooks
     ┣ 📜batch_analysis.ipynb
-    ┣ 📜ellipse_analysis.ipynb --> visualising SLEAP preprocessing outputs
-    ┣ 📜jitter.ipynb --> quantifying jitter inherent to SLEAP
-    ┣ 📜light_reflection_motion_correction.ipynb --> segmentation of light reflection in the eye using OpenCV (unused)
-    ┣ 📜saccades_analysis.ipynb --> step by step SLEAP data preprocessing (now inside of load_and_process.py + initial saccade detection
-    ┗ 📜upsampling_jitter_analysis.ipynb --> loading SLEAP outputs from LANCZOS upsampling tests
+    ┣ 📜ellipse_analysis.ipynb   -->   visualising SLEAP preprocessing outputs
+    ┣ 📜jitter.ipynb   -->   quantifying jitter inherent to SLEAP
+    ┣ 📜light_reflection_motion_correction.ipynb   -->   segmentation of light reflection in the eye using OpenCV (unused)
+    ┣ 📜saccades_analysis.ipynb   -->   step by step SLEAP data preprocessing (now inside of load_and_process.py + initial saccade detection
+    ┗ 📜upsampling_jitter_analysis.ipynb   -->   loading SLEAP outputs from LANCZOS upsampling tests
 ```
+
+## Conventions
+
+SLEAP outputs to be saved as VideoData2_...sleap.csv
+Flipped videos to be saved as VideoData2_...flipped.avi
 
 ## Functions available
 
