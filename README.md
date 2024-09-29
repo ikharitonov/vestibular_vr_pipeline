@@ -82,5 +82,8 @@ __process.py__:
 - ```resample_index(index, freq) >> resamples pd.DatetimeIndex according to the specified freq parameter```
 - ```get_timepoint_info(registers_dict, print_all=False) >> prints all timepoint information from streams loaded with utils.load_registers```
 - ```pad_and_resample(registers_dict, resampling_period='0.1ms', method='linear') >> adds padding and applies process.resample_stream to all streams loaded with utils.load_registers```
+- ```plot_dataset(dataset_path) >> plotting function useful to visualise the effects of resampling on each stream```
+- ```align_fluorescence_first_approach(fluorescence_df, onixdigital_df) >> alignment using the HARP timestamps in OnixDigital and photometry software timestamps (obsolete)```
+- ```convert_datetime_to_seconds(timestamp_input) >> convert from datetime representation to seconds representation of HARP timestamps```
 
 ### SLEAP
