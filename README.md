@@ -83,7 +83,12 @@ __process.py__:
 - ```get_timepoint_info(registers_dict, print_all=False) >> prints all timepoint information from streams loaded with utils.load_registers```
 - ```pad_and_resample(registers_dict, resampling_period='0.1ms', method='linear') >> adds padding and applies process.resample_stream to all streams loaded with utils.load_registers```
 - ```plot_dataset(dataset_path) >> plotting function useful to visualise the effects of resampling on each stream```
-- ```align_fluorescence_first_approach(fluorescence_df, onixdigital_df) >> alignment using the HARP timestamps in OnixDigital and photometry software timestamps (obsolete)```
 - ```convert_datetime_to_seconds(timestamp_input) >> convert from datetime representation to seconds representation of HARP timestamps```
+- ```convert_seconds_to_datetime(seconds_input) >> inverse of process.convert_datetime_to_seconds```
+- ```reformat_and_add_many_streams(streams, dataframe, source_name, stream_names, index_column_name='Seconds') >> takes the input pd.DataFrame, converts to the accepted format and adds it the the streams dictionary```
+- ```convert_arrays_to_dataframe(list_of_names, list_of_arrays) >> converts named arrays into pd.DataFrame```
+- ```align_fluorescence_first_approach(fluorescence_df, onixdigital_df) >> alignment using the HARP timestamps in OnixDigital and photometry software timestamps (obsolete)```
+- ```calculate_conversions_second_approach(data_path, photometry_path=None, verbose=True) >> calculates ONIX-HARP, HARP-ONIX, Photometry-HARP, ONIX-Photometry timestamp conversion functions according to this issue https://github.com/neurogears/vestibular-vr/issues/76```
+- - ```select_from_photodiode_data(OnixAnalogClock, OnixAnalogData, hard_start_time, harp_end_time, conversions) >> selects a segment of photodiode data```
 
 ### SLEAP
