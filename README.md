@@ -65,6 +65,16 @@ Flipped videos to be saved as VideoData2_...flipped.avi
 
 ## Functions available
 
-### HARP
+### HARP Resources
+
+__utils.py__:
+- ```load_registers(dataset_path) >> returns {'H1': {'OpticalTrackingRead0X(46)': [...], ...}, 'H2': {'AnalogInput(39)': [...], ...}```
+- ```read_ExperimentEvents(dataset_path) >> returns pd.DataFrame```
+- ```read_OnixDigital(dataset_path) >> returns pd.DataFrame```
+- ```read_OnixAnalogData(dataset_path) >> returns pd.DataFrame```
+- ```read_OnixAnalogFrameCount(dataset_path) >> returns pd.DataFrame```
+- ```read_OnixAnalogClock(dataset_path) >> returns pd.DataFrame```
+- ```read_fluorescence(photometry_path) >> returns pd.DataFrame```
+- ```read_fluorescence_events(photometry_path) >> returns pd.DataFrame```
 
 ### SLEAP
