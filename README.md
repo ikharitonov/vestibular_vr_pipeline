@@ -102,3 +102,5 @@ __load\_and_process.py__:
 - ```get_centered_coordinates_dict(coordinates_dict, center_point) >> centers the coordinates according to the center point calculated with load_and_process.get_left_right_center_point```
 - ```get_rotated_coordinates_dict(coordinates_dict, theta) >> rotates the previously centered coordinates by the angle calculated with load_and_process.find_horizontal_axis_angle```
 - ```get_fitted_ellipse_parameters(coordinates_dict, columns_of_interest) >> fits at ellipse to the points designating the circumference of the pupil, returns its center point coordinates, width, height and angle```
+- ```create_flipped_videos(path, what_to_flip='VideoData1') >> uses OpenCV to flip avi videos horizontally```
+- ```get_all_detected_saccades(path) >> finds saccades based on heuristics and motion referenced points (obsolete)```
