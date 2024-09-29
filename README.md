@@ -89,6 +89,16 @@ __process.py__:
 - ```convert_arrays_to_dataframe(list_of_names, list_of_arrays) >> converts named arrays into pd.DataFrame```
 - ```align_fluorescence_first_approach(fluorescence_df, onixdigital_df) >> alignment using the HARP timestamps in OnixDigital and photometry software timestamps (obsolete)```
 - ```calculate_conversions_second_approach(data_path, photometry_path=None, verbose=True) >> calculates ONIX-HARP, HARP-ONIX, Photometry-HARP, ONIX-Photometry timestamp conversion functions according to this issue https://github.com/neurogears/vestibular-vr/issues/76```
-- - ```select_from_photodiode_data(OnixAnalogClock, OnixAnalogData, hard_start_time, harp_end_time, conversions) >> selects a segment of photodiode data```
+- ```select_from_photodiode_data(OnixAnalogClock, OnixAnalogData, hard_start_time, harp_end_time, conversions) >> selects a segment of photodiode data```
 
 ### SLEAP
+
+__load\_and_process.py__:
+- ```load_videography_data(dataset_path) >> scans through VideoData1&2 folders, concatenates log files and searches for SLEAP outputs```
+- ```get_coordinates_dict(df, columns_of_interest) >> converts the pd.DataFrame of SLEAP outputs to accepted format```
+- ```find_horizontal_axis_angle(df, point1='left', point2='center') >> infers the horizontal axis from the average of the coordinates of the two specified points```
+- ```get_left_right_center_point(coordinates_dict) >> gets the average center point between the coordinates of the two specified points```
+- ```get_reformatted_coordinates_dict(coordinates_dict, columns_of_interest) >> unifies 'x' and 'y' coordinate arrays corresponding to one 'point' into a single array of shape [sample_number, 2]```
+- ```get_centered_coordinates_dict(coordinates_dict, center_point) >> centers the coordinates according to the center point calculated with load_and_process.get_left_right_center_point```
+- ```get_rotated_coordinates_dict(coordinates_dict, theta) >> rotates the previously centered coordinates by the angle calculated with load_and_process.find_horizontal_axis_angle```
+- ```get_fitted_ellipse_parameters(coordinates_dict, columns_of_interest) >> fits at ellipse to the points designating the circumference of the pupil, returns its center point coordinates, width, height and angle```
