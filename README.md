@@ -77,4 +77,10 @@ __utils.py__:
 - ```read_fluorescence(photometry_path) >> returns pd.DataFrame```
 - ```read_fluorescence_events(photometry_path) >> returns pd.DataFrame```
 
+__process.py__:
+- ```resample_stream(data_stream_df, resampling_period='0.1ms', method='linear') >> resamples pd.DataFrame according to the specified method```
+- ```resample_index(index, freq) >> resamples pd.DatetimeIndex according to the specified freq parameter```
+- ```get_timepoint_info(registers_dict, print_all=False) >> prints all timepoint information from streams loaded with utils.load_registers```
+- ```pad_and_resample(registers_dict, resampling_period='0.1ms', method='linear') >> adds padding and applies process.resample_stream to all streams loaded with utils.load_registers```
+
 ### SLEAP
