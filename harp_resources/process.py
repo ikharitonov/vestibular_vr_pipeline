@@ -233,6 +233,15 @@ def reformat_dataframe(input_df, name, index_column_name='Seconds', data_column_
 def convert_arrays_to_dataframe(list_of_names, list_of_arrays):
     return pd.DataFrame({list_of_names[i]: list_of_arrays[i] for i in range(len(list_of_names))})
 
+def convert_stream_from_datetime_to_seconds(stream):
+    return pd.Series(data=stream.values, index=convert_datetime_to_seconds(stream.index))
+
+def convert_all_streams_from_datetime_to_seconds(streams):
+    for source_name in streams.keys():
+        for stream_name in streams[source_name].keys():
+            streams[source_name][stream_name] = convert_stream_from_datetime_to_seconds(streams[source_name][streams])
+    return streams
+
 def add_stream(streams, source_name, new_stream, new_stream_name):
     if not source_name in streams.keys():
         streams[source_name] = {}
