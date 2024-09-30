@@ -211,9 +211,8 @@ def align_fluorescence_first_approach(fluorescence_df, onixdigital_df):
     return fluorescence_df
 
 def convert_datetime_to_seconds(timestamp_input):
-    if type(timestamp_input) == datetime:
+    if type(timestamp_input) == datetime or type(timestamp_input) == pd.DatetimeIndex:
         return (timestamp_input - utils.harp.REFERENCE_EPOCH).total_seconds()
-        
     else:
         return timestamp_input.apply(lambda x: (x - utils.harp.REFERENCE_EPOCH).total_seconds())
 
@@ -329,3 +328,24 @@ def select_from_photodiode_data(OnixAnalogClock, OnixAnalogData, hard_start_time
     print(f'Selection of photodiode data finished in {time() - start_time:.2f} seconds.')
 
     return x, y
+
+def save_streams_to_excel(save_path, streams):
+
+    start_time = time()
+
+    source_names = [x for x in streams.keys()]
+    source_dfs = {}
+    
+    for source_name in source_names:
+        data = {}
+        for stream_name in streams[source_name].keys():
+            data[f'HARP_timestamps_{stream_name}'] = pd.DataFrame(streams[source_name][stream_name]).index
+            data[stream_name] = pd.DataFrame(streams[source_name][stream_name]).values[:,0]
+        source_dfs[source_name] = pd.DataFrame(data)
+
+    # Save dataframes as excel files
+    with pd.ExcelWriter(save_path) as writer:
+        for source_name, source_df in source_dfs.items():
+            source_df.to_excel(writer, sheet_name=source_name)
+
+    print(f'Data exported as Excel file in {time() - start_time:.2f} seconds.')
