@@ -259,6 +259,14 @@ def calculate_conversions_second_approach(data_path, photometry_path=None, verbo
     # find time mapping/warping between onix and harp clock
     upsample = np.array(OnixAnalogFrameCount["Seconds"]).repeat(100, axis=0)[0:-100]
 
+    if upsample.shape[0] != OnixAnalogClock.shape[0]:
+        print('WARNING: "Unlucky" dataset with delayed subscription to OnixAnalogClock in Bonsai. As a consequence, the starting part of photodiode data is not counted. See https://github.com/neurogears/vestibular-vr/issues/81 for more information.')
+        print(f'Shape of OnixAnalogClock == [{OnixAnalogClock.shape[0]}] shape of OnixAnalogFrameCount == [{upsample.shape[0]}].')
+        print(f'Cutting {upsample.shape[0] - OnixAnalogClock.shape[0]} values from the beginning of OnixAnalogFrameCount. Data considered to be MISSING.')
+
+        offset = upsample.shape[0] - OnixAnalogClock.shape[0]
+        upsample = upsample[offset:]
+
     # define conversion functions between timestamps (onix to harp)
     o_m, o_b = np.polyfit(OnixAnalogClock, upsample, 1)
     onix_to_harp_seconds = lambda x: x*o_m + o_b
