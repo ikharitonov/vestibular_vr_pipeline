@@ -7,6 +7,7 @@ import copy
 from datetime import timedelta
 from datetime import datetime
 import aeon.io.api as api
+import h5py
 
 def resample_stream(data_stream_df, resampling_period='0.1ms', method='linear'):
     return data_stream_df.resample(resampling_period).last().interpolate(method=method)
@@ -83,23 +84,29 @@ def pad_and_resample(streams_dict, resampling_period='0.1ms', method='linear'):
     
     for source_name, source_element in streams_dict.items():
         for stream_name, stream in source_element.items():
-            dummy_value = 0
+            if stream.dtype==bool:
+                dummy_value = 1
+            else:
+                dummy_value = 0
             # Check if global first and last timestamps already exist in a given stream
             if stream.index[0] != first_timestamp:
                 # Create new element with the earliest timestamp
-                new_start = pd.Series([dummy_value], index=[first_timestamp])
+                new_start = pd.Series([dummy_value], index=[first_timestamp]).astype(stream.dtype)
                 # Append the new element to the Series
                 stream = pd.concat([new_start, stream])
                 stream = stream.sort_index()
             if stream.index[-1] != last_timestamp:
                 # Create new element with the latest timestamp
-                new_end = pd.Series([dummy_value], index=[last_timestamp])
+                new_end = pd.Series([dummy_value], index=[last_timestamp]).astype(stream.dtype)
                 # Append the new element to the Series
                 stream = pd.concat([stream, new_end])
                 stream = stream.sort_index()
 
             # Resampling and interpolation
-            streams_dict[source_name][stream_name] = resample_stream(stream, resampling_period=resampling_period, method=method)
+            if stream.dtype==bool:
+                streams_dict[source_name][stream_name] = resample_stream(stream, resampling_period=resampling_period, method='nearest').astype(bool)
+            else:
+                streams_dict[source_name][stream_name] = resample_stream(stream, resampling_period=resampling_period, method=method)
     
     print(f'Padding and resampling finished in {time() - start_time:.2f} seconds.')
 
@@ -338,23 +345,61 @@ def select_from_photodiode_data(OnixAnalogClock, OnixAnalogData, hard_start_time
 
     return x, y
 
-def save_streams_to_excel(save_path, streams):
+def running_unit_conversion(running_array): #for ball linear movement
+    resolution = 12000 # counts per inch
+    inches_per_count = 1 / resolution
+    meters_per_count = 0.0254 * inches_per_count
+    dt = 0.01 # for OpticalTrackingRead0Y(46) -this is sensor specific. current sensor samples at 100 hz 
+    linear_velocity = meters_per_count / dt # meters per second per count
+    
+    return running_array * linear_velocity
+
+def rotation_unit_conversion(rotation_array): # for ball rotation
+    resolution = 12000 # counts per inch
+    inches_per_count = 1 / resolution
+    meters_per_count = 0.0254 * inches_per_count
+    dt = 0.01 # for OpticalTrackingRead0Y(46) -this is sensor specific. current sensor samples at 100 hz 
+    linear_velocity = meters_per_count / dt # meters per second per count
+    
+    ball_radius = 0.1 # meters 
+    angular_velocity = linear_velocity / ball_radius # radians per second per count
+    angular_velocity = angular_velocity * (180 / np.pi) # degrees per second per count
+    
+    return rotation_array * angular_velocity
+
+def save_streams_as_h5(data_path, resampled_streams, streams_to_save_pattern={'H1': ['OpticalTrackingRead0X(46)', 'OpticalTrackingRead0Y(46)'], 'H2': ['Encoder(38)'], 'Photometry': ['CH1-410', 'CH1-470', 'CH1-560'], 'SleapVideoData1': ['Ellipse.Diameter', 'Ellipse.Center.X', 'Ellipse.Center.Y'], 'SleapVideoData2': ['Ellipse.Diameter', 'Ellipse.Center.X', 'Ellipse.Center.Y'], 'ONIX': ['Photodiode']}):
 
     start_time = time()
 
-    source_names = [x for x in streams.keys()]
-    source_dfs = {}
-    
-    for source_name in source_names:
-        data = {}
-        for stream_name in streams[source_name].keys():
-            data[f'HARP_timestamps_{stream_name}'] = pd.DataFrame(streams[source_name][stream_name]).index
-            data[stream_name] = pd.DataFrame(streams[source_name][stream_name]).values[:,0]
-        source_dfs[source_name] = pd.DataFrame(data)
+    stream_data_to_be_saved = {}
 
-    # Save dataframes as excel files
-    with pd.ExcelWriter(save_path) as writer:
-        for source_name, source_df in source_dfs.items():
-            source_df.to_excel(writer, sheet_name=source_name)
+    for source_name in streams_to_save_pattern.keys():
+        if source_name in resampled_streams.keys():
+            stream_data_to_be_saved[source_name] = {}
+            for stream_name in streams_to_save_pattern[source_name]:
+                if stream_name in resampled_streams[source_name].keys():
+                    stream_data_to_be_saved[source_name][stream_name] = resampled_streams[source_name][stream_name]
+                else:
+                    print(f'{stream_name} was included in "streams_to_save_pattern", but cannot be found inside of {source_name} source of resampled streams.')
+        else:
+            print(f'{source_name} was included in "streams_to_save_pattern", but cannot be found inside of resampled streams.')
+            
+    common_index = convert_datetime_to_seconds(next(iter(stream_data_to_be_saved.values()))[next(iter(stream_data_to_be_saved[next(iter(stream_data_to_be_saved.keys()))]))].index)
 
-    print(f'Data exported as Excel file in {time() - start_time:.2f} seconds.')
+    output_file = data_path/f'resampled_streams_{data_path.parts[-1]}.h5'
+
+    # Open an HDF5 file to save data
+    with h5py.File(output_file, 'w') as h5file:
+        # Save the common index once
+        h5file.create_dataset('HARP_timestamps', data=common_index.values)
+        
+        # Iterate over the dictionary and save each stream
+        for source_name, stream_dict in stream_data_to_be_saved.items():
+            # Create a group for each source
+            source_group = h5file.create_group(source_name)
+            
+            for stream_name, stream_data in stream_dict.items():
+                # Save each stream as a dataset within the source group
+                source_group.create_dataset(stream_name, data=stream_data.values)
+
+    print(f'Data saved as H5 file in {time() - start_time:.2f} seconds to {output_file}.')
