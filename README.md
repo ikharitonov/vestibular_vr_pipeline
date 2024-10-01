@@ -27,6 +27,13 @@ python -m pip install -e .
 pip install harp-python
 ```
 
+### Install other packages
+
+```python
+pip install lsq-ellipse
+pip install opencv-python
+```
+
 ## Repository contents
 
 ```
