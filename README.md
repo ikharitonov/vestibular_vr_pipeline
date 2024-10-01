@@ -35,6 +35,7 @@ pip install harp-python
 
 ```python
 pip install lsq-ellipse
+pip install h5py
 pip install opencv-python
 ```
 
