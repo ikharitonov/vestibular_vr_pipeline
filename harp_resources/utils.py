@@ -6,6 +6,7 @@ from pathlib import Path
 import os
 from time import time
 from aeon.io.reader import Reader
+import h5py
 
 def load(reader: Reader, root: Path) -> pd.DataFrame:
     root = Path(root)
@@ -191,7 +192,61 @@ def load_registers(dataset_path):
             h2_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream[data_stream.columns[0]]
         else:
             raise ValueError(f"Loaded data stream does not contain supported number of columns in Pandas DataFrame. Dataframe columns shape = {data_stream.columns.shape}")
-            
+    
+    # Converting any pd.DataFrames present (assumed to be single column DataFrames) into pd.Series
+    for stream_name, stream in h1_data_streams.items():
+        if type(stream) == pd.DataFrame:
+            try:
+                h1_data_streams[stream_name] = pd.Series(data=stream.values.squeeze(), index=stream.index)
+            except:
+                print(f'ERROR: Attempted to convert the loaded register "{stream_name}" to pandas.Series common format, but failed. Likely cause is that it has more than a single column.')
+    for stream_name, stream in h2_data_streams.items():
+        if type(stream) == pd.DataFrame:
+            try:
+                h1_data_streams[stream_name] = pd.Series(data=stream.values.squeeze(), index=stream.index)
+            except:
+                print(f'ERROR: Attempted to convert the loaded register "{stream_name}" to pandas.Series common format, but failed. Likely cause is that it has more than a single column.')
+ 
     print(f'Registers loaded in {time() - start_time:.2f} seconds.')
     
     return {'H1': h1_data_streams, 'H2': h2_data_streams}
+
+def load_streams_from_h5(data_path):
+    # File path to read the HDF5 file
+    input_file = data_path/f'resampled_streams_{data_path.parts[-1]}.h5'
+
+    if not os.path.exists(input_file):
+        print(f'ERROR: {input_file} does not exist.')
+        return None
+
+    # Open the HDF5 file to read data
+    with h5py.File(input_file, 'r') as h5file:
+        # Read the common index (which was saved as Unix timestamps)
+        common_index_unix = h5file['HARP_timestamps'][:]
+        
+        # Convert Unix timestamps back to pandas DatetimeIndex
+        common_index = pd.to_datetime(common_index_unix)
+        
+        # Initialize the dictionary to reconstruct the data
+        reconstructed_streams = {}
+        
+        # Iterate through the groups (sources) in the file
+        for source_name in h5file.keys():
+            if source_name == 'HARP_timestamps':
+                # Skip the 'common_index' dataset, it's already loaded
+                continue
+            
+            # Initialize a sub-dictionary for each source
+            reconstructed_streams[source_name] = {}
+            
+            # Get the group (source) and iterate over its datasets (streams)
+            source_group = h5file[source_name]
+            
+            for stream_name in source_group.keys():
+                # Read the stream data
+                stream_data = source_group[stream_name][:]
+                
+                # Reconstruct the original pd.Series with the common index
+                reconstructed_streams[source_name][stream_name] = pd.Series(data=stream_data, index=common_index)
+
+    return reconstructed_streams
