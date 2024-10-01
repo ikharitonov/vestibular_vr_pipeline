@@ -6,11 +6,13 @@ This is the general pipeline for loading, preprocessing, aligning, quality check
 
 The code mainly relies on <a href=https://github.com/harp-tech/harp-python>harp-python</a> and <a href=https://github.com/SainsburyWellcomeCentre/aeon_mecha>aeon_mecha</a> packages. The proposed setup is to first create an Anaconda environment for _aeon\_mecha_, install it and then install _harp-python_ inside of this same environment. Optional packages required by some of the example Jupyter notebooks, but not essential for the main pipeline, are cv2, ffmpeg.
 
-### Create anaconda environment
+### Create anaconda environment and add it to jupyter
 
 ```python
 conda create -n aeon
 conda activate aeon
+conda install -c anaconda ipykernel
+python3 -m ipykernel install --user --name=aeon
 ```
 
 ### Install _aeon\_mecha_
@@ -20,6 +22,8 @@ git clone https://github.com/SainsburyWellcomeCentre/aeon_mecha.git
 cd aeon_mecha
 python -m pip install -e .
 ```
+In macOS, use 
+`conda install pip` instead of the last line
 
 ### Install _harp-python_
 
@@ -27,11 +31,19 @@ python -m pip install -e .
 pip install harp-python
 ```
 
+<<<<<<< HEAD
 ### Install other packages
 
 ```python
 pip install lsq-ellipse
 pip install opencv-python
+=======
+### Run notebooks
+```
+conda deactivate
+conda install jupyter
+jupyter notebook
+>>>>>>> dfeccc05b4c171c6a42dba85fddc37ea745be3ce
 ```
 
 ## Repository contents
