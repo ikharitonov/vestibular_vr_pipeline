@@ -31,19 +31,11 @@ In macOS, use
 pip install harp-python
 ```
 
-<<<<<<< HEAD
 ### Install other packages
 
 ```python
 pip install lsq-ellipse
 pip install opencv-python
-=======
-### Run notebooks
-```
-conda deactivate
-conda install jupyter
-jupyter notebook
->>>>>>> dfeccc05b4c171c6a42dba85fddc37ea745be3ce
 ```
 
 ## Repository contents
