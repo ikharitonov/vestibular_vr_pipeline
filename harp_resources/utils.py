@@ -222,10 +222,10 @@ def load_streams_from_h5(data_path):
     # Open the HDF5 file to read data
     with h5py.File(input_file, 'r') as h5file:
         # Read the common index (which was saved as Unix timestamps)
-        common_index_unix = h5file['HARP_timestamps'][:]
+        common_index = h5file['HARP_timestamps'][:]
         
         # Convert Unix timestamps back to pandas DatetimeIndex
-        common_index = pd.to_datetime(common_index_unix)
+        # common_index = pd.to_datetime(common_index)
         
         # Initialize the dictionary to reconstruct the data
         reconstructed_streams = {}
