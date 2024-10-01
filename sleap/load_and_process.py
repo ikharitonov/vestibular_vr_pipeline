@@ -34,12 +34,12 @@ def load_videography_data(path):
     vd2_files, read_vd2_dfs, read_vd2_sleap_dfs = [], [], []
     
     for e in os.listdir(path/'VideoData1'):
-        if not '.avi' in e and not '.sleap' in e:
+        if not '.avi' in e and not '.sleap' in e and e[-4:] != '.slp':
             vd1_files.append(e)
     for e in os.listdir(path/'VideoData2'):
-        if not '.avi' in e and not '.sleap' in e:
+        if not '.avi' in e and not '.sleap' in e and e[-4:] != '.slp':
             vd2_files.append(e)
-    
+
     vd1_has_sleap, vd2_has_sleap = False, False
     for e in os.listdir(path/'VideoData1'):
         if '.sleap' in e: vd1_has_sleap = True
@@ -99,7 +99,7 @@ def load_videography_data(path):
     if vd1_has_sleap: vd1_out = pd.merge(read_vd1_dfs[['frame_idx', 'Seconds']], read_vd1_sleap_dfs, on='frame_idx')
     if vd2_has_sleap: vd2_out = pd.merge(read_vd2_dfs[['frame_idx', 'Seconds']], read_vd2_sleap_dfs, on='frame_idx')
     
-    return vd1_out, vd2_out
+    return vd1_out, vd2_out, vd1_has_sleap, vd2_has_sleap
 
 def recalculated_coordinates(point_name, df, reference_subtraced_displacements_dict):
     # Recalculates coordinates of a point at each frame, applying the referenced displacements to the coordinates of the very first frame.
