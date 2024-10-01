@@ -20,6 +20,8 @@ git clone https://github.com/SainsburyWellcomeCentre/aeon_mecha.git
 cd aeon_mecha
 python -m pip install -e .
 ```
+In macOS, use 
+`conda install pip` instead of the last line
 
 ### Install _harp-python_
 
