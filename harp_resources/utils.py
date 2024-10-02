@@ -7,6 +7,7 @@ import os
 from time import time
 from aeon.io.reader import Reader
 import h5py
+import json
 
 def load(reader: Reader, root: Path) -> pd.DataFrame:
     root = Path(root)
@@ -134,6 +135,24 @@ def read_OnixAnalogClock(dataset_path):
     print(f'OnixAnalogClock loaded in {time() - start_time:.2f} seconds.')
 
     return output
+
+def read_SessionSettings(dataset_path, print_contents=False):
+    
+    # File path to the jsonl file
+    jsonl_file_path = dataset_path/'SessionSettings'/os.listdir(dataset_path/'SessionSettings')[0]
+
+    # Open and read the jsonl file line by line
+    with open(jsonl_file_path, 'r') as file:
+        for line in file:
+            # Parse each line as JSON
+            data = json.loads(line)
+            
+            # Pretty print the data with correct indentation
+            pretty_data = json.dumps(data, indent=4)
+
+    if print_contents: print(pretty_data)
+
+    return data
 
 def read_fluorescence(photometry_data_path):
     Fluorescence = pd.read_csv(photometry_data_path/'Fluorescence.csv', skiprows=1, index_col=False)
