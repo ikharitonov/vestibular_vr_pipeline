@@ -9,7 +9,9 @@ from harp_resources import utils
 
 # PARAMETERS
 range_around_halt = [-5,11]
-baselining_time_range = [-1, 0] # in relation to the halt event
+baselining_time_range = [-3, 0] # in relation to the halt event
+# photometry_type = 'GRAB'
+photometry_type = 'GCaMP8m'
 
 
 def select_perievent_segment(trace, event_times, range_around_event):
@@ -91,14 +93,14 @@ def run(data_path, photometry_path):
          # Selecting perievent segments
         selected_chunks = {}
         select_perievent_segment_func = lambda x: select_perievent_segment(x, halt_times, range_around_halt)
-        selected_chunks['GRAB df/F'] = select_perievent_segment_func(photometry)
+        selected_chunks[f'{photometry_type} df/F'] = select_perievent_segment_func(photometry)
         selected_chunks['Running'] = select_perievent_segment_func(running)
         if eye_data_exists: selected_chunks['Horizontal eye movement'] = select_perievent_segment_func(eye_movements_horizontal)
         if eye_data_exists: selected_chunks['Vertical eye movement'] = select_perievent_segment_func(eye_movements_vertical)
         if eye_data_exists: selected_chunks['Pupil diameter'] = select_perievent_segment_func(averaged_pupil_diameter_stream)
 
         # Baselining the selected segments with the defined range in relation to the halt event
-        t = np.linspace(range_around_halt[0], range_around_halt[1], selected_chunks['GRAB df/F'].shape[1])
+        t = np.linspace(range_around_halt[0], range_around_halt[1], selected_chunks[f'{photometry_type} df/F'].shape[1])
         for name, trace in selected_chunks.items():
             selected_chunks[name] = baseline_subtract_trace_on_selected_range(t, trace, baselining_time_range)
 
@@ -107,8 +109,7 @@ def run(data_path, photometry_path):
 
         if eye_data_exists:
             ylabels = [
-                # 'GRAB df/F (%)',
-                'GCaMP8m df/F (%)',
+                f'{photometry_type} df/F (%)',
                 'speed (cm/s)',
                 'horizontal coordinate (pixels)',
                 'vertical coordinate (pixels)',
@@ -117,8 +118,7 @@ def run(data_path, photometry_path):
             ]
         else:
             ylabels = [
-                # 'GRAB df/F (%)',
-                'GCaMP8m df/F (%)',
+                f'{photometry_type} df/F (%)',
                 'speed (cm/s)',
                 'photodiode state'
             ]
@@ -141,7 +141,7 @@ def run(data_path, photometry_path):
             ax[i].set_ylabel(ylabels[i])
 
         # plt.show()
-        fig.savefig(data_path/f'{data_path.parts[-1]}_{blocks_names[block_i]}_individual_perievent_traces.png')
+        fig.savefig(data_path/f'{data_path.parts[-1]}_{blocks_names[block_i]}_bsln{abs(baselining_time_range[0])}sec_individual_perievent_traces.png')
 
         ########################### Averaged Traces Plot ###########################
 
@@ -162,13 +162,13 @@ def run(data_path, photometry_path):
 
         # ax[0].set_title(data_path.parts[-1], fontsize=16)
         # plt.show()
-        fig.savefig(data_path/f'{data_path.parts[-1]}_{blocks_names[block_i]}_averaged_perievent_traces.png')
+        fig.savefig(data_path/f'{data_path.parts[-1]}_{blocks_names[block_i]}_bsln{abs(baselining_time_range[0])}sec_averaged_perievent_traces.png')
 
         ########################### Saving data into CSV file ###########################
-        _ = selected_chunks.pop('Photodiode')
+        # _ = selected_chunks.pop('Photodiode')
         combined_dictionaries = {'time': np.linspace(range_around_halt[0], range_around_halt[1], selected_chunks['Running'].shape[1])} | {f'{k}_mean':v.mean(axis=0) for k,v in selected_chunks.items()} | {f'{k}_mean_minus_sd':v.mean(axis=0)-v.std(axis=0) for k,v in selected_chunks.items()} | {f'{k}_mean_plus_sd':v.mean(axis=0)+v.std(axis=0) for k,v in selected_chunks.items()}
         out_df = pd.DataFrame(combined_dictionaries)
-        out_df.to_csv(data_path/f'{data_path.parts[-1]}_{blocks_names[block_i]}_averaged_perievent_data.csv')
+        out_df.to_csv(data_path/f'{data_path.parts[-1]}_{blocks_names[block_i]}_bsln{abs(baselining_time_range[0])}sec_averaged_perievent_data.csv')
 
 GRAB_MMclosed_Regular_day1_path = '/home/ikharitonov/RANCZLAB-NAS/data/ONIX/20240730_Mismatch_Experiment/GRAB_MMclosed&Regular_220824/'
 GRAB_MMclosed_Regular_day2_path = '/home/ikharitonov/RANCZLAB-NAS/data/ONIX/20240730_Mismatch_Experiment/GRAB_MMclosed&Regular_230824/'
