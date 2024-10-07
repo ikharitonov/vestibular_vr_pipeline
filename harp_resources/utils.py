@@ -156,7 +156,7 @@ def read_SessionSettings(dataset_path, print_contents=False):
 
 def read_fluorescence(photometry_data_path):
     Fluorescence = pd.read_csv(photometry_data_path/'Fluorescence.csv', skiprows=1, index_col=False)
-    Fluorescence = Fluorescence.drop(columns='Unnamed: 5')
+    if 'Unnamed: 5' in Fluorescence.columns: Fluorescence = Fluorescence.drop(columns='Unnamed: 5')
     return Fluorescence
 
 def read_fluorescence_events(photometry_data_path):

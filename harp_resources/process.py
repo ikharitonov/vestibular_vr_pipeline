@@ -274,10 +274,11 @@ def calculate_conversions_second_approach(data_path, photometry_path=None, verbo
     # find time mapping/warping between onix and harp clock
     upsample = np.array(OnixAnalogFrameCount["Seconds"]).repeat(100, axis=0)[0:-100]
 
+    # Handling the mismatching lenghts error
     if upsample.shape[0] != OnixAnalogClock.shape[0]:
-        print('WARNING: "Unlucky" dataset with delayed subscription to OnixAnalogClock in Bonsai. As a consequence, the starting part of photodiode data is not counted. See https://github.com/neurogears/vestibular-vr/issues/81 for more information.')
+        print('\nWARNING: "Unlucky" dataset with delayed subscription to OnixAnalogClock in Bonsai. As a consequence, the starting part of photodiode data is not counted. See https://github.com/neurogears/vestibular-vr/issues/81 for more information.')
         print(f'Shape of OnixAnalogClock == [{OnixAnalogClock.shape[0]}] shape of OnixAnalogFrameCount == [{upsample.shape[0]}].')
-        print(f'Cutting {upsample.shape[0] - OnixAnalogClock.shape[0]} values from the beginning of OnixAnalogFrameCount. Data considered to be MISSING.')
+        print(f'Cutting {upsample.shape[0] - OnixAnalogClock.shape[0]} values from the beginning of OnixAnalogFrameCount. Data considered to be MISSING.\n')
 
         offset = upsample.shape[0] - OnixAnalogClock.shape[0]
         upsample = upsample[offset:]
@@ -295,8 +296,19 @@ def calculate_conversions_second_approach(data_path, photometry_path=None, verbo
         OnixDigital = utils.read_OnixDigital(data_path)
         PhotometryEvents = utils.read_fluorescence_events(photometry_path)
 
-        # define conversion functions between timestamps (onix to harp)
-        m, b = np.polyfit(PhotometryEvents['TimeStamp'].values, OnixDigital["Value.Clock"], 1)
+        onix_digital_array = OnixDigital["Value.Clock"].values
+        photometry_events_array = PhotometryEvents['TimeStamp'].values
+
+        # Handling the mismatching lengths error
+        if photometry_events_array.shape[0] != onix_digital_array.shape[0]:
+            print('WARNING: "Unlucky" dataset with unmatching lengths of OnixDigital and Events.csv (photometry software events) logs. See https://github.com/ikharitonov/vestibular_vr_pipeline/issues/12 for more information.')
+            min_length = min(onix_digital_array.shape[0], photometry_events_array.shape[0])
+            print(f'OnixDigital has {onix_digital_array.shape[0]} events and Events.csv has {photometry_events_array.shape[0]} events. Cutting to the minimum {min_length} events from the beggining, aligning by the end.\n')
+            photometry_events_array = photometry_events_array[-min_length:]
+            onix_digital_array = onix_digital_array[-min_length:]
+
+        # define conversion functions between timestamps (onix to harp) 
+        m, b = np.polyfit(photometry_events_array, onix_digital_array, 1)
         photometry_to_onix_time = lambda x: x*m + b
         photometry_to_harp_time = lambda x: onix_to_harp_timestamp(photometry_to_onix_time(x))
         onix_time_to_photometry = lambda x: (x - b) / m
