@@ -1,3 +1,4 @@
+import os
 import numpy as np
 from pathlib import Path
 import pandas as pd
@@ -154,9 +155,16 @@ for i, path_set in enumerate(paths):
         print(f'EXTRACTING DATA FROM DATASET {i}')
         print(f'DATA_PATH: {path_set[0]}')
         print(f'PHOTOMETRY PATH: {path_set[1]}')
-        run(path_set[0], path_set[1])
+
+        data_path = Path(path_set[0])
+        output_file = data_path/f'resampled_streams_{data_path.parts[-1]}.h5'
+        if os.path.exists(output_file):
+            print(f'PREVIOUSLY SAVED "{output_file}" ALREADY EXISTS. SKIPPING...\n')
+        else:
+            run(path_set[0], path_set[1])
+            print(f'DATASET {i}: FINISHING\n')
     except Exception as e:
-        print(f'DATASET {i} FAILED. ERROR: {e}')
+        print(f'DATASET {i} FAILED. ERROR: {e}\n')
 
 
 # G8
