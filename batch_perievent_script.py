@@ -9,12 +9,16 @@ from harp_resources import utils
 
 # PARAMETERS
 range_around_halt = [-5,11]
-baselining_time_range = [-3, 0] # in relation to the halt event
+baselining_time_range = [-1, 0] # in relation to the halt event
 photometry_type = 'GRAB'
 # photometry_type = 'GCaMP8m'
 
-# baseline_string = f'bsln{abs(baselining_time_range[0])}sec'
-baseline_string = 'nobaseline'
+apply_baseline = True
+
+if apply_baseline:
+    baseline_string = f'bsln{abs(baselining_time_range[0])}sec'
+else:
+    baseline_string = 'nobaseline'
 
 
 def select_perievent_segment(trace, event_times, range_around_event):
@@ -102,10 +106,11 @@ def run(data_path, photometry_path):
         if eye_data_exists: selected_chunks['Vertical eye movement'] = select_perievent_segment_func(eye_movements_vertical)
         if eye_data_exists: selected_chunks['Pupil diameter'] = select_perievent_segment_func(averaged_pupil_diameter_stream)
 
-        # # Baselining the selected segments with the defined range in relation to the halt event
-        # t = np.linspace(range_around_halt[0], range_around_halt[1], selected_chunks[f'{photometry_type} df/F'].shape[1])
-        # for name, trace in selected_chunks.items():
-        #     selected_chunks[name] = baseline_subtract_trace_on_selected_range(t, trace, baselining_time_range)
+        # Baselining the selected segments with the defined range in relation to the halt event
+        t = np.linspace(range_around_halt[0], range_around_halt[1], selected_chunks[f'{photometry_type} df/F'].shape[1])
+        if apply_baseline:
+            for name, trace in selected_chunks.items():
+                selected_chunks[name] = baseline_subtract_trace_on_selected_range(t, trace, baselining_time_range)
 
         # Avoiding to baseline the Photodiode
         selected_chunks['Photodiode'] = select_perievent_segment_func(photodiode)
@@ -130,7 +135,7 @@ def run(data_path, photometry_path):
 
         fig, ax = plt.subplots(nrows=len(selected_chunks), ncols=1, figsize=(12,(len(selected_chunks)-1)*6))
 
-        fig.suptitle(f'{data_path.parts[-1]} {blocks_names[block_i]}')
+        fig.suptitle(f'{data_path.parts[-1]} {blocks_names[block_i]} {halt_times.shape[0]} halts')
 
         for i, (label, trace) in enumerate(selected_chunks.items()):
             t = np.linspace(range_around_halt[0], range_around_halt[1], trace.shape[1])
@@ -150,7 +155,7 @@ def run(data_path, photometry_path):
 
         fig, ax = plt.subplots(nrows=len(selected_chunks), ncols=1, figsize=(12,(len(selected_chunks)-1)*6))
 
-        fig.suptitle(f'{data_path.parts[-1]} {blocks_names[block_i]}')
+        fig.suptitle(f'{data_path.parts[-1]} {blocks_names[block_i]} {halt_times.shape[0]} halts')
 
         for i, (label, traces) in enumerate(selected_chunks.items()):
             t = np.linspace(range_around_halt[0], range_around_halt[1], traces.shape[1])
