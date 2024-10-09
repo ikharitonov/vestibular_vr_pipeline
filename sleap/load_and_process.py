@@ -274,3 +274,57 @@ def create_flipped_videos(path, what_to_flip='VideoData1'):
         avis = [x for x in os.listdir(path / what_to_flip) if x[-4:] == '.avi']
         for avi in avis:
             horizontal_flip_script.horizontal_flip_avi(path / what_to_flip / avi, path / what_to_flip / f'{avi[:-4]}.flipped.avi')
+
+def find_sequential_groups(arr):
+
+    groups = []
+    current_group = [arr[0]]
+    
+    for i in range(1, len(arr)):
+        if arr[i] == arr[i-1] + 1:
+            current_group.append(arr[i])
+        else:
+            groups.append(current_group)
+            current_group = [arr[i]]
+    groups.append(current_group)
+    
+    return groups
+
+def detect_saccades_with_threshold(eye_data_stream, threshold_std_times=1):
+
+    harp_time_inds, absolute_positions = eye_data_stream.index, eye_data_stream.values
+
+    framerate = 60
+    print(f'Assuming camera frame rate of {framerate} Hz')
+
+    derivative_of_position = np.diff(absolute_positions) * framerate
+
+    threshold = derivative_of_position.mean() + derivative_of_position.std() * threshold_std_times
+
+    detected_peaks_inds = np.where(np.abs(derivative_of_position) > threshold)[0]
+
+    # Correcting for over-counted peaks - collecting max value points within groups crossing the threshold
+    # detected_max_saccades is a nested list = [[saccade_0_index, saccade_0_velocity_amplitude], [saccade_1_index, saccade_1_velocity_amplitude], ...]
+    detected_max_saccades = []
+
+    for group in find_sequential_groups(detected_peaks_inds):
+        max_amplitude_relative_ind = np.abs(derivative_of_position[group]).argmax()
+        max_amplitude_ind = group[max_amplitude_relative_ind]
+        max_amplitude_value = derivative_of_position[max_amplitude_ind]
+        detected_max_saccades.append([max_amplitude_ind, max_amplitude_value])
+
+    detected_max_saccades = np.array(detected_max_saccades)
+    detected_max_saccades_inds = (detected_max_saccades[:,0].astype(int))
+
+    total_number = detected_max_saccades.shape[0]
+
+    print(f'Found {total_number} saccades with chosen threshold of {threshold} (mean + {threshold_std_times} times the standard deviation).')
+
+    runtime = harp_time_inds[-1] - harp_time_inds[0]
+
+    print(f'Saccade frequency = {(total_number / runtime) * 60} events per minute')
+
+    return harp_time_inds[detected_max_saccades_inds], detected_max_saccades[:,1]
+
+def calculate_saccade_frequency_within_time_range():
+    pass
