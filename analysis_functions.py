@@ -208,3 +208,67 @@ def check_block_overlap(data_dict):
             print(f'Not all block columns contains True Values for {mouse}')
         elif not no_overlap and all_columns_true:
             print(f'There are some overlap between the blocks {mouse}')
+
+
+def pooling_data(datasets):
+    '''
+    :param datasets: [list of datasets]
+    :return: one dataframe with all data
+    *IMPORTANT: This must be the location of preprocessed.csv files,in a folder named by the recording time,
+    in a folder where 4 first letters gives mouse ID
+    '''
+    pooled_data = pd.concat(datasets)
+    return pooled_data
+
+
+
+def filter_data(data, filters = []):
+    '''
+    :param data: pandas df of pooled data
+    :param filters: list that refers to filterdict within function, defines relevant filters through column names and values
+    :param dur: optional list of two values: [seconds before event start, seconds after event start]
+    :return: pd df of data corresponding to the filters chosen
+    '''
+    filterdict = {
+        'V2M': ['Area', 'V2M'], # V2M
+        'V1': ['Area', 'V1'], # V1
+        'female': ['Sex', 'F'], # female
+        'male': ['Sex', 'M'], # male
+        'B1M3': ['mouseID', 'B1M3'],
+        'B1M5': ['mouseID', 'B1M5'],
+        'B2M1': ['mouseID', 'B2M1'],
+        'B2M4': ['mouseID', 'B2M4'],
+        'B2M5': ['mouseID', 'B2M5'],
+        'B2M6': ['mouseID', 'B2M6'],
+        'B3M1': ['mouseID', 'B3M1'],
+        'B3M2': ['mouseID', 'B3M2'],
+        'B3M3': ['mouseID', 'B3M3'],
+        'B3M4': ['mouseID', 'B3M4'],
+        'B3M5': ['mouseID', 'B3M5'],
+        'B3M6': ['mouseID', 'B3M6'],
+        'B3M7': ['mouseID', 'B3M7'],
+        'B3M8': ['mouseID', 'B3M8'],
+        'halt': ['event', True],
+        'not_halt': ['event', False],
+        'day1': ['Session', 'day1'],
+        'day2': ['Session', 'day1'],
+        'MM': ['Experiment', 'MMclosed-open'],
+        'MM_regular':['Experiment', 'MMclosed-and-Regular'],
+    }
+    filtered_df = data
+    for filter in filters:
+        try:
+            colname = filterdict[filter][0]
+            valname = filterdict[filter][1]
+            filtered_df = filtered_df.loc[filtered_df[colname]==valname]
+        except KeyError:
+            print('KeyError: \n Ensure filters appear in dataset and in filterdict (can be added)',
+                 '\n Dataset will be returned without this filter: ', filter)
+        if len(filtered_df) == 0:
+            print(f'There are no {filter} in the filtered dict')
+    return filtered_df
+
+
+def norm(x, min, max):
+    normal = (x-min)/(max-min)
+    return normal
