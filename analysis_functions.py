@@ -254,6 +254,8 @@ def filter_data(data, filters = []):
         'day2': ['Session', 'day1'],
         'MM': ['Experiment', 'MMclosed-open'],
         'MM_regular':['Experiment', 'MMclosed-and-Regular'],
+        'open_block': ['LinearPlaybackMismatch_block', True],
+        'closed_block': ['LinearMismatch_block', True],
     }
     filtered_df = data
     for filter in filters:
@@ -272,3 +274,8 @@ def filter_data(data, filters = []):
 def norm(x, min, max):
     normal = (x-min)/(max-min)
     return normal
+
+
+
+
+
