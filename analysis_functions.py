@@ -1,6 +1,7 @@
 import os
 import h5py
 import pandas as pd
+import numpy as np
 from pathlib import Path
 
 
@@ -221,6 +222,22 @@ def pooling_data(datasets):
     return pooled_data
 
 
+dtype_dict = {'Seconds':np.float64, 
+    '470_dfF':np.float64,
+    'movementX':np.float64, 
+    'movementY':np.float64,
+    'event':bool,
+    'ExperimentEvents':object,
+    'Experiment':object,
+    'Session':object,
+    'mouseID':object,
+    'sex':object,
+    'area':object,
+    'No_halt':bool,
+    'LinearMismatch_block':bool,
+    'LinearPlaybackMismatch_block':bool}
+
+
 
 def filter_data(data, filters = []):
     '''
@@ -276,6 +293,73 @@ def norm(x, min, max):
     return normal
 
 
+def align_to_event_start(df, trace, event_col, range_around_event):
+    
+    trace_chunk_list = []
+    bsl_trace_chunk_list = []
+    event_index_list = []
+    
+    # Identify the start times for each event
+    event_times = df.loc[df[event_col] & ~df[event_col].shift(1, fill_value=False)].index
+    
+    # Calculate the time range around each event
+    before_0 = range_around_event[0]
+    after_0 = range_around_event[1]
+    
+    # Calculate the target length of each chunk based on the sampling rate
+    sampling_rate = 0.001
+    target_length = int(((before_0 + after_0) / sampling_rate) + 1)  # Include both ends
+    Index= pd.Series(np.linspace(-range_around_event[0], range_around_event[1], target_length)) # common index
+    
+    for event_time in event_times:
+        
+        # Determine the time range for each chunk
+        start = event_time - before_0
+        end = event_time + after_0
+        
+        # Extract the chunk from the trace column
+        chunk = df[trace].loc[start:end]
+        
+        # Normalize the index to start at -before_0
+        chunk.index = (chunk.index - chunk.index[0]) - before_0
+        # Check if the chunk is shorter than the target length
+        if len(chunk) < target_length:
+            # Pad the chunk with NaN values at the end to reach the target length
+            padding = pd.Series([np.nan] * (target_length - len(chunk)), index=pd.RangeIndex(len(chunk), target_length))
+            chunk = pd.concat([chunk, padding])
+            chunk.index = Index # Getting the same index as the others
+        
+        # Baseline the chunk
+        baselined_chunk = baseline(chunk)
+        
+        # Append the chunk and baselined chunk to lists
+        trace_chunk_list.append(chunk.values)
+        bsl_trace_chunk_list.append(baselined_chunk.values)
+        event_index_list.append(event_time)  # Store the event time for use in final column names
+
+    # Convert lists of arrays to DataFrames
+    trace_chunks = pd.DataFrame(np.column_stack(trace_chunk_list), columns=event_index_list)
+    bsl_trace_chunks = pd.DataFrame(np.column_stack(bsl_trace_chunk_list), columns=event_index_list)
+
+    # Set the index as the common time range index for each chunk
+    trace_chunks.index = Index
+    bsl_trace_chunks.index = Index
+    
+    return trace_chunks, bsl_trace_chunks
 
 
 
+def baseline(chunk):
+    # Select the slice between -1 and 0 (from 1 second before event to event start)
+    baseline_slice = chunk.loc[-1:0]
+    
+    # Calculate the mean of the baseline slice
+    baseline_mean = baseline_slice.mean()
+    
+    # Subtract the baseline mean from the entire chunk to baseline it
+    baselined_chunk = chunk - baseline_mean
+    
+    return baselined_chunk
+
+
+    
