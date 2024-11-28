@@ -84,10 +84,14 @@ def add_experiment_events(data_dict, events_dict, mouse_info):
         # Retrieve the main and event DataFrames
         main_df = data_dict[mouse_key]
         event_df = events_dict[mouse_key]
-            
+
+        # Ensure both indices are sorted
+        main_df = main_df.sort_index()
+        event_df = event_df.sort_index()
+
         # Perform a merge_asof on the index to add 'Value' as 'ExperimentEvents' with backward matching
-        main_df = pd.merge_asof(
-            main_df.sort_index(),
+        merged_df = pd.merge_asof(
+            main_df,
             event_df[['Value']],  # Only select the 'Value' column from event_df
             left_index=True,
             right_index=True,
@@ -96,23 +100,25 @@ def add_experiment_events(data_dict, events_dict, mouse_info):
         )
 
         # Rename the 'Value' column to 'ExperimentEvents'
-        if 'ExperimentEvents' in main_df.columns:
-            main_df['ExperimentEvents'] = main_df.pop('Value')  # Replace existing column with the new 'Value' column
-            print(f'Pre-existing ExperimentEvents column was replaces with new for {mouse_key}')
+        if 'ExperimentEvents' in merged_df.columns:
+            merged_df['ExperimentEvents'] = merged_df.pop('Value')  # Replace existing column with the new 'Value' column
+            print(f'Pre-existing ExperimentEvents column was replaced with new for {mouse_key}')
         else:
-            main_df = main_df.rename(columns={'Value': 'ExperimentEvents'})  # Add new column
+            merged_df = merged_df.rename(columns={'Value': 'ExperimentEvents'})  # Add new column
             print(f'Added new ExperimentEvents for {mouse_key}')
-        
+
         # Add metadata from event_df
-        main_df['Experiment'] = event_df['experiment'].unique()[0]
-        main_df['Session'] = event_df['session'].unique()[0]
-        
+        merged_df['Experiment'] = event_df['experiment'].unique()[0]
+        merged_df['Session'] = event_df['session'].unique()[0]
+
         # Add mouse ID, sex, and brain area
-        main_df['mouseID'] = mouse_key
-        main_df['sex'] = mouse_info[mouse_key]['sex']
-        main_df['area'] = mouse_info[mouse_key]['area']
-        
-        data_dict[mouse_key] = main_df
+        mouse_info_name = mouse_key[:4]
+        merged_df['mouseID'] = mouse_info_name
+        merged_df['sex'] = mouse_info[mouse_info_name]['sex']
+        merged_df['area'] = mouse_info[mouse_info_name]['area']
+
+        # Update the dictionary with the merged DataFrame
+        data_dict[mouse_key] = merged_df
 
     return data_dict
 
@@ -138,34 +144,35 @@ def add_no_halt_column(data_dict, events_dict):
             left_index=True,  # main_df has time in its index
             right_index=True,  # no_halt_events has time in its index (both in ms)
             direction='backward',  # Choose closest event on or before the timestamp
-            tolerance=0.00005  # Because the dfs generally match down to 4 decimals, and we only want one no_halt at a time
+            tolerance=0.00005  # Match down to 4 decimals
         )
 
-        # Assign True to the 'No_halt' column where 'No halt' matches
-        main_df['No_halt'] = merged_df['Value'].fillna(False) == 'No halt'
+        # Explicitly convert 'Value' to string and fill NaN with 'False'
+        main_df['No_halt'] = (merged_df['Value'].astype(str).fillna('') == 'No halt')
 
         # Update the dictionary with the modified DataFrame
         data_dict[mouse_key] = main_df
 
         print('No_halt events added to', mouse_key)
 
-   
-
+        # Verification
         event_len = len(events_dict[mouse_key].loc[events_dict[mouse_key].Value == 'No halt'])
         data_len = len(data_dict[mouse_key].loc[data_dict[mouse_key].No_halt == True])
         if event_len != data_len:
-            print(f'for {mouse_key} the number of actual no-halt events is {event_len} and the number of True values in the data now is {data_len}')
+            print(f'For {mouse_key}, the number of actual no-halt events is {event_len} and the number of True values in the data now is {data_len}')
         
         if event_len == data_len:
             print(f'  Correct number of no-halt events for {mouse_key}\n')
 
     return data_dict
 
+
 def add_block_columns(df, event_df):
     # Iterate through each index and event value in event_df
     prev_column = None  # Tracks the column currently being filled as True
     for idx, event in event_df['Value'].items():
         if 'block started' in event:
+            print(event)
             # Create a new column in df, filling with False initially
             column_name = event.split()[0]+'_block'
             df[column_name] = False
