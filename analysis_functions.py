@@ -336,7 +336,7 @@ def align_to_event_start(df, trace, event_col, range_around_event):
         # Extract the chunk from the trace column
         chunk = df[trace].loc[start:end]
         runspeed = df['movementX'].loc[start:event_time].mean() #Saving mean run speed up until halt
-        
+        truningspeed = df['movementY'].loc[start:event_time].mean() 
         # Normalize the index to start at -before_0
         chunk.index = (chunk.index - chunk.index[0]) - before_0
         # Check if the chunk is shorter than the target length
@@ -363,12 +363,13 @@ def align_to_event_start(df, trace, event_col, range_around_event):
         # Set the index as the common time range index for each chunk
         trace_chunks.index = Index
         bsl_trace_chunks.index = Index
+        run_speeds.index = ['mean_moveX', 'mean_moveY']
     
         return trace_chunks, bsl_trace_chunks, run_speeds
     
     except ValueError:
         if len(event_times) < 1:
-            print('could not align to events becasue there were none, will return nothing')
+            print('could not align to events because there were none, will return nothing')
             
         return 0, 0, 0
 
