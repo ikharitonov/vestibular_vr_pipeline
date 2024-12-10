@@ -3,6 +3,14 @@ import h5py
 import pandas as pd
 import numpy as np
 from pathlib import Path
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import numpy as np
+import pandas as pd
+import pandas as pd
+import numpy as np
+from matplotlib.patches import Rectangle
+from harp_resources import process, utils
 
 
 def load_h5_streams_to_dict(data_paths):
@@ -304,6 +312,7 @@ def align_to_event_start(df, trace, event_col, range_around_event):
     
     trace_chunk_list = []
     bsl_trace_chunk_list = []
+    run_speed_list = []
     event_index_list = []
     
     # Identify the start times for each event
@@ -326,6 +335,7 @@ def align_to_event_start(df, trace, event_col, range_around_event):
         
         # Extract the chunk from the trace column
         chunk = df[trace].loc[start:end]
+        runspeed = df['movementX'].loc[start:event_time].mean() #Saving mean run speed up until halt
         
         # Normalize the index to start at -before_0
         chunk.index = (chunk.index - chunk.index[0]) - before_0
@@ -342,22 +352,30 @@ def align_to_event_start(df, trace, event_col, range_around_event):
         # Append the chunk and baselined chunk to lists
         trace_chunk_list.append(chunk.values)
         bsl_trace_chunk_list.append(baselined_chunk.values)
+        run_speed_list.append(runspeed)
         event_index_list.append(event_time)  # Store the event time for use in final column names
 
     # Convert lists of arrays to DataFrames
-    trace_chunks = pd.DataFrame(np.column_stack(trace_chunk_list), columns=event_index_list)
-    bsl_trace_chunks = pd.DataFrame(np.column_stack(bsl_trace_chunk_list), columns=event_index_list)
-
-    # Set the index as the common time range index for each chunk
-    trace_chunks.index = Index
-    bsl_trace_chunks.index = Index
+    try:
+        trace_chunks = pd.DataFrame(np.column_stack(trace_chunk_list), columns=event_index_list)
+        bsl_trace_chunks = pd.DataFrame(np.column_stack(bsl_trace_chunk_list), columns=event_index_list)
+        run_speeds = pd.DataFrame(np.column_stack(run_speed_list), columns=event_index_list)
+        # Set the index as the common time range index for each chunk
+        trace_chunks.index = Index
+        bsl_trace_chunks.index = Index
     
-    return trace_chunks, bsl_trace_chunks
+        return trace_chunks, bsl_trace_chunks, run_speeds
+    
+    except ValueError:
+        if len(event_times) < 1:
+            print('could not align to events becasue there were none, will return nothing')
+            
+        return 0, 0, 0
 
 
 
 def baseline(chunk):
-    # Select the slice between -1 and 0 (from 1 second before event to event start)
+    #select slice between -1 and 0 (from 1 second before event to event start)
     baseline_slice = chunk.loc[-1:0]
     
     # Calculate the mean of the baseline slice
@@ -367,6 +385,192 @@ def baseline(chunk):
     baselined_chunk = chunk - baseline_mean
     
     return baselined_chunk
+
+
+def view_session_mouse(mousedata_dict, mouse):
+    print('\033[1m' + f'Plotted traces for {mouse}' + '\033[0m')
+    
+    plotlist = ['470_dfF', 'movementX']
+    fig, ax = plt.subplots(len(plotlist), len(mousedata_dict), figsize=(15, 10), sharex=True)  # sharex=True for a shared x-axis
+    
+    for s, (session, session_data) in enumerate(mousedata_dict.items()):
+        
+        # Getting the mouse-specific data from the session
+        time = session_data.index
+        event = session_data.halt
+        color = ['forestgreen', 'blue']
+    
+        # Iterate over the traces in plotlist and plot each on a new row
+        for i, trace in enumerate(plotlist):
+            ax[i, s].plot(time, session_data[trace], color=color[i])
+            ax[i, s].set_title(f"{trace} - {session}")
+            
+            # Plot shaded areas for each halt event
+            ymin, ymax = ax[i, s].get_ylim()
+            halt = ax[i, s].fill_between(time, ymin, ymax, where=event, color='grey', alpha=0.3)
+        
+        # Plot annotations for different blocks
+        block_colors = ['lightsteelblue', 'lightcoral', 'forestgreen']
+        colorcount = 0
+        for col in session_data:
+            if '_block' in col:
+                start = session_data.loc[session_data[col] == True].index[0]
+                end = session_data.loc[session_data[col] == True].index[-1]
+        
+                min_time, max_time = ax[0, s].get_xlim()
+                norm_start = norm(start, min_time, max_time)
+                norm_end = norm(end, min_time, max_time)
+                
+                # Add rectangles with alpha=0.1 to each trace subplot in this session
+                for i in range(len(plotlist)):
+                    ax[i, s].add_patch(Rectangle(
+                        (norm_start, 0), norm_end - norm_start, 1, 
+                        facecolor=block_colors[colorcount], alpha=0.1, clip_on=False, transform=ax[i, s].transAxes
+                    ))
+
+                # Add labels at the bottom of the last plot
+                ax[-1, s].text(norm_start + 0.05, -0.2, col, transform=ax[-1, s].transAxes,
+                               fontsize=10, verticalalignment='top')
+                ax[-1, s].add_patch(Rectangle(
+                    (norm_start, -0.15), norm_end - norm_start, -0.2, 
+                    facecolor=block_colors[colorcount], alpha=0.5, clip_on=False, transform=ax[-1, s].transAxes))
+                
+                colorcount += 1
+
+    halt.set_label('halts')
+    # Create one legend for the figure
+    fig.legend(fontsize=12)
+    
+    # Update font size and layout
+    plt.rcParams.update({'font.size': 10})
+    fig.tight_layout(pad=1.08)
+    plt.show()
+
+
+def plot_compare_blocks(block_dict, event):
+    # Determine number of blocks (columns) and maximum number of mice (rows)
+    num_blocks = len(block_dict)
+    max_mice = max(len(mice_data) for mice_data in block_dict.values())
+    
+    # Set up the figure with the determined number of rows and columns
+    fig, ax = plt.subplots(max_mice, num_blocks, figsize=(5 * num_blocks, 3 * max_mice), squeeze=False)
+    fig.suptitle(f'{event} alignment')
+    
+    # Dictionary to store mean data across mice for each block
+    mean_mouse_dict = {block: {} for block in block_dict.keys()}
+    
+    # Loop over each block and each mouse, plotting down the rows within each block column
+    for col, (block_name, mice_data) in enumerate(block_dict.items()):
+        color_map = plt.cm.Greys  # Grey color map for traces
+        
+        # Loop over each mouse in the current block
+        for row, (mouse, data) in enumerate(mice_data.items()):
+            try:
+                color = color_map(np.linspace(0, 1, data.shape[1]))  # Assign colors for traces
+    
+                # Plot vertical line for event alignment
+                ax[row, col].axvline(x=0, linewidth=1, color='r', linestyle='--')
+                
+                # Plot individual traces with shading
+                for idx, trace in enumerate(data.columns):
+                    ax[row, col].plot(data.index, data[trace], color='grey', alpha=0.3)
+    
+                # Calculate mean and standard deviation across traces
+                mean_trace = data.mean(axis=1)
+                mean_mouse_dict[block_name][mouse] = mean_trace
+                std_trace = data.std(axis=1)
+    
+                # Plot mean trace and standard deviation shading
+                ax[row, col].plot(mean_trace, color='black', label='Mean' if row == 0 else "")
+                ax[row, col].fill_between(mean_trace.index, mean_trace - std_trace, mean_trace + std_trace, alpha=0.3)
+    
+                # Add a shaded rectangle for a specified range (0 to 1)
+                ax[row, col].add_patch(patches.Rectangle((0, ax[row, col].get_ylim()[0]), 1, 
+                                                         ax[row, col].get_ylim()[1] - ax[row, col].get_ylim()[0], 
+                                                         color='grey', alpha=0.1))
+                # Set title and labels for the first row
+                if row == 0:
+                    ax[row, col].set_title(f"{block_name} loop responses")
+                if col == 0:
+                    ax[row, col].set_ylabel(f"Mouse: {mouse}")
+            except AttributeError:
+                pass
+        
+
+    fig.tight_layout(pad=1.08)
+
+    # Aggregate means across mice for each block
+    fig, ax = plt.subplots(1, num_blocks, figsize = (5 * num_blocks, 5))
+    fig.suptitle('Mean across animal means')
+    
+    for col, (block_name, mean_data) in enumerate(mean_mouse_dict.items()):
+        # Create DataFrame from mean data and compute overall mean and std across mice
+        mean_df = pd.DataFrame.from_dict(mean_data)
+        overall_mean = mean_df.mean(axis=1)
+        overall_std = mean_df.std(axis=1)
+        
+        # Plot mean across animals with standard deviation shading
+        ax[col].axvline(x=0, linewidth=1, color='r', linestyle='--')
+        ax[col].plot(overall_mean, color='black')
+        ax[col].fill_between(overall_mean.index, overall_mean - overall_std, overall_mean + overall_std, alpha=0.3)
+        
+        # Add rectangle to highlight the specified region (e.g., 0 to 1)
+        ax[col].add_patch(patches.Rectangle((0, ax[col].get_ylim()[0]), 1, 
+                                            ax[col].get_ylim()[1] - ax[col].get_ylim()[0], 
+                                            color='grey', alpha=0.1))
+        
+        # Set title for each block
+        ax[col].set_title(f'{block_name} loop mean response')
+
+    return mean_mouse_dict
+
+
+
+def extract_aligned_data(aligned_data_dict):
+    # Initialize an empty list to store results
+    results = []
+    
+    for session_number, session_blocks in aligned_data_dict.items():
+        for session_block, mice_data in session_blocks.items():
+            for mouse_id, item in mice_data.items():
+                # Check if the item is a DataFrame
+                if not isinstance(item, pd.DataFrame):
+                    print(f"Warning: The data for Mouse ID '{mouse_id}' in session '{session_number}' and block '{session_block}' is not a DataFrame. Skipping.")
+                    continue
+
+                # Copy the DataFrame and ensure the index is numeric
+                df = item.copy()
+                df.index = pd.to_numeric(df.index)
+
+                # Process each column independently
+                for column in df.columns:
+                    event_time_data = df.loc[0:1, column]  # Data during the event (0 to +1 seconds)
+                    post_event_data = df.loc[1:2, column]  # Data during the first second after the event (+1 to +2 seconds)
+
+                    peak_response = event_time_data.max()  # Max response during the event
+                    min_response = event_time_data.min()  # Minimum response during the event
+                    mean_response_event = event_time_data.mean()  # Mean response during the event
+                    mean_response_post_event = post_event_data.mean()  # Mean response during the post-event time
+                    min_response_post_event = post_event_data.min()  #Minimum response during the post-event time
+                    peak_response_post_event = post_event_data.max() #Maximum response during the post-event time
+
+                    #add results to list of dicts
+                    results.append({
+                        "SessionNumber": session_number,
+                        "SessionBlock": session_block,
+                        "MouseID": mouse_id,
+                        "EventTime": column,
+                        "PeakResponse": peak_response,
+                        "MinResponse":  min_response,
+                        "MeanResponse": mean_response_event,
+                        "MeanResponse_after": mean_response_post_event,
+                        "MinResponse_after": min_response_post_event,
+                        "PeakResponse_after": peak_response_post_event
+                    })
+
+    # convert to a pandas df
+    output_df = pd.DataFrame(results)
+    return output_df
 
 
     
