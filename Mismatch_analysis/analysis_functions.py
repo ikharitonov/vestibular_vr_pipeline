@@ -452,7 +452,11 @@ def view_session_mouse(mousedata_dict, mouse):
     plt.rcParams.update({'font.size': 10})
     fig.tight_layout(pad=1.08)
     plt.show()
-
+    try:
+        return fig, ax
+    except TypeError:
+        fig, ax = plt.subplots(len(plotlist), len(mousedata_dict))
+        return fig, ax
 
 def plot_compare_blocks(block_dict, event):
     # Determine number of blocks (columns) and maximum number of mice (rows)
