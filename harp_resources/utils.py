@@ -70,11 +70,19 @@ class Video(Csv):
 
 
 
-def load(reader: Reader, root: Path) -> pd.DataFrame:
+def load_2(reader: Reader, root: Path) -> pd.DataFrame:
     root = Path(root)
     pattern = f"{root.joinpath(reader.pattern).joinpath(reader.pattern)}_*.{reader.extension}"
     data = [reader.read(Path(file)) for file in glob(pattern)]
     return pd.concat(data)
+
+
+def load(reader: Reader, root: Path) -> pd.DataFrame:
+    root = Path(root)
+    pattern = f"{root.joinpath(root.name)}_{reader.register.address}_*.bin"
+    data = [reader.read(file) for file in glob(pattern)]
+    return pd.concat(data)
+    
 
 def load_harp(reader: Harp, root: Path) -> pd.DataFrame:
     root = Path(root)
