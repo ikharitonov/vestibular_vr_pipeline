@@ -14,3 +14,5 @@ harp_resources/process.py
 *.pyc
 harp_resources/process.py
 harp_resources/process.py
+*.pyc
+*.png

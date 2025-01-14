@@ -93,48 +93,74 @@ def read_ExperimentEvents(path):
 
 
 def add_experiment_events(data_dict, events_dict, mouse_info):
-    # Iterate over each mouse key in the dictionaries
+    """
+    Adds experimental events from events_dict to data_dict, aligning on the index and incorporating metadata.
+    Critical events ('block started', 'Apply halt', 'No halt', 'Block timer elapsed') dominate and stand alone.
+    """
+    critical_events = {'block started', 'Apply halt', 'No halt'} #dict with the strings that must always be indcluded as single values
+
     for mouse_key in data_dict:
-        # Retrieve the main and event DataFrames
+        # get main and event dfs
         main_df = data_dict[mouse_key]
         event_df = events_dict[mouse_key]
 
-        # Ensure both indices are sorted
+        #sort index
         main_df = main_df.sort_index()
         event_df = event_df.sort_index()
 
-        # Perform a merge_asof on the index to add 'Value' as 'ExperimentEvents' with backward matching
+        #column to indicate if a critical event is present
+        event_df['IsCritical'] = event_df['Value'].apply(
+            lambda x: any(critical in x for critical in critical_events)
+        )
+
+        # Combine events, priority to critical events
+        def combine_events(group):
+            if group['IsCritical'].any():
+                #if critical events exist, keep only those
+                return ', '.join(sorted(group.loc[group['IsCritical'], 'Value'].unique()))
+            else:
+                # Otherwise, combine all events
+                return ', '.join(sorted(group['Value'].unique()))
+
+        event_df['CombinedEvents'] = event_df.groupby(event_df.index).apply(combine_events)
+
+        # Drop duplicates and unnecessary columns
+        event_df = event_df[['CombinedEvents', 'experiment', 'session']].drop_duplicates()
+
+        # Perform a merge_asof on the index to add 'CombinedEvents' with backward matching
         merged_df = pd.merge_asof(
             main_df,
-            event_df[['Value']],  # Only select the 'Value' column from event_df
+            event_df[['CombinedEvents']],
             left_index=True,
             right_index=True,
             direction='backward',
-            tolerance=0  # Adjust tolerance for matching on the index
+            tolerance=0  # Adjust tolerance if needed
         )
 
-        # Rename the 'Value' column to 'ExperimentEvents'
+        #rename 'CombinedEvents' to 'ExperimentEvents'
         if 'ExperimentEvents' in merged_df.columns:
-            merged_df['ExperimentEvents'] = merged_df.pop('Value')  # Replace existing column with the new 'Value' column
+            merged_df['ExperimentEvents'] = merged_df.pop('CombinedEvents')
             print(f'Pre-existing ExperimentEvents column was replaced with new for {mouse_key}')
         else:
-            merged_df = merged_df.rename(columns={'Value': 'ExperimentEvents'})  # Add new column
+            merged_df = merged_df.rename(columns={'CombinedEvents': 'ExperimentEvents'})
             print(f'Added new ExperimentEvents for {mouse_key}')
 
-        # Add metadata from event_df
-        merged_df['Experiment'] = event_df['experiment'].unique()[0]
-        merged_df['Session'] = event_df['session'].unique()[0]
+        #add metadata to main df
+        merged_df['Experiment'] = event_df['experiment'].iloc[0]
+        merged_df['Session'] = event_df['session'].iloc[0]
 
-        # Add mouse ID, sex, and brain area
+        #Add mouse ID, sex, and brain area
         mouse_info_name = mouse_key[:4]
         merged_df['mouseID'] = mouse_info_name
         merged_df['sex'] = mouse_info[mouse_info_name]['sex']
         merged_df['area'] = mouse_info[mouse_info_name]['area']
 
-        # Update the dictionary with the merged DataFrame
+        #Update the dict
         data_dict[mouse_key] = merged_df
+        print(' dict updated\n')
 
     return data_dict
+
 
 def add_no_halt_column(data_dict, events_dict):
     # Iterate over each mouse in the dictionaries
@@ -230,6 +256,81 @@ def check_block_overlap(data_dict):
             print(f'Not all block columns contains True Values for {mouse}')
         elif not no_overlap and all_columns_true:
             print(f'There are some overlap between the blocks {mouse}')
+            
+def downsample_data(df, time_col='Seconds', interval=0.001):
+    '''
+    Uses pandas resample and aggregate functions to downsample the data to the desired interval. 
+    * Note: Aggregation functions must be applied for each variable that is to be included.
+    https://pandas.pydata.org/docs/reference/api/pandas.core.resample.Resampler.aggregate.html
+    * Note: because the donwsampling keeps the first non-NaN value in each interval, some values could be lost.
+    '''
+    # Convert the Seconds column to a TimedeltaIndex
+    df = df.set_index(pd.to_timedelta(df[time_col], unit='s'))
+
+    #define aggregation functions for all possible columns
+    aggregation_functions = {
+        '470_dfF': 'mean', # takes the mean signal of the datapoints going into each new downsampled datapoint
+        '560_dfF': 'mean',
+        'movementX': 'mean',
+        'movementY': 'mean',
+        'event': 'any', # events column is a bool, and if there is any True values in the interval, the downsampled datapoint will be True
+        'ExperimentEvents': lambda x: x.dropna().iloc[0] if not x.dropna().empty else None, #first non-NaN value in the interval 
+        'Experiment': 'first', # All values should be the same, so it can always just take the first string value
+        'Session': 'first',
+        'mouseID': 'first',
+        'sex': 'first',
+        'area': 'first',
+        'No_halt': 'any', 
+        'LinearMismatch_block': 'any', 
+        'LinearPlaybackMismatch_block': 'any',
+        'LinearRegular_block': 'any',
+        'LinearClosedloopMismatch_block':'any',
+        'LinearRegularMismatch_block':'any',
+        'LinearNormal_block':'any',
+    }
+
+    # Filter aggregation_functions to only include columns present in df
+    aggregation_functions = {key: func for key, func in aggregation_functions.items() if key in df.columns}
+
+    # Resample with the specified interval and apply the filtered aggregations
+    downsampled_df = df.resample(f'{interval}s').agg(aggregation_functions)
+
+    # Reset the index to make the Seconds column normal again
+    downsampled_df = downsampled_df.reset_index()
+    downsampled_df[time_col] = downsampled_df[time_col].dt.total_seconds()  # Convert Timedelta back to seconds
+
+    # Forward fill for categorical columns if needed, only if they exist in downsampled_df
+    categorical_cols = ['Experiment', 'Session', 'mouseID', 'sex', 'area']
+    for col in categorical_cols:
+        if col in downsampled_df.columns:
+            downsampled_df[col] = downsampled_df[col].ffill()
+
+    # Remove consecutive duplicate values in the 'ExperimentEvents' column, if it exists
+    if 'ExperimentEvents' in downsampled_df.columns:
+        downsampled_df['ExperimentEvents'] = downsampled_df['ExperimentEvents'].where(
+            downsampled_df['ExperimentEvents'] != downsampled_df['ExperimentEvents'].shift()
+        )
+
+    return downsampled_df
+
+
+def test_event_numbers(downsampled_data, original_data, mouse):
+    '''
+    Counts number of True values in the No_halt columns in the original and the downsampled data
+    This will indicate whether information was lost in the downsampling.
+    If the original events somehow has been upsampled previously (for example if the tolerance was set too high in add_experiment_events()), 
+    repeatings of the same event can also lead to fewer True events in the downsampled df.
+    '''
+    nohalt_down = len(downsampled_data.loc[downsampled_data['No_halt']==True])
+    nohalt_original = len(original_data.loc[original_data['No_halt']==True])
+    if nohalt_down != nohalt_original:
+        print(f'mouse{mouse}')
+        print(f'There are actually {nohalt_original} no-halts, but the downsampled data only contains {nohalt_down}')
+        print('Should re-run the downsampling. Try changing interval lenght. Othewise, consider not downsampling\n')
+    if nohalt_down == nohalt_original:
+        print(f'mouse{mouse}')
+        print(f'There are {nohalt_original} no-halts, and downsampled data contains {nohalt_down}\n')
+
 
 
 def pooling_data(datasets):
@@ -294,6 +395,8 @@ def filter_data(data, filters = []):
         'MM_regular':['Experiment', 'MMclosed-and-Regular'],
         'open_block': ['LinearPlaybackMismatch_block', True],
         'closed_block': ['LinearMismatch_block', True],
+        'regular_block': ['LinearRegularMismatch_block', True],
+        'normal_block': ['LinearNormal_block', True],
     }
     filtered_df = data
     for filter in filters:
@@ -315,15 +418,18 @@ def norm(x, min, max):
 
 
 def align_to_event_start(df, trace, event_col, range_around_event):
-    
+    """
+    Align trace data around events with improved handling for trace chunks.
+    """
     trace_chunk_list = []
     bsl_trace_chunk_list = []
     run_speed_list = []
+    turn_speed_list = []
     event_index_list = []
     
     # Identify the start times for each event
     event_times = df.loc[df[event_col] & ~df[event_col].shift(1, fill_value=False)].index
-    
+
     # Calculate the time range around each event
     before_0 = range_around_event[0]
     after_0 = range_around_event[1]
@@ -331,27 +437,28 @@ def align_to_event_start(df, trace, event_col, range_around_event):
     # Calculate the target length of each chunk based on the sampling rate
     sampling_rate = 0.001
     target_length = int(((before_0 + after_0) / sampling_rate) + 1)  # Include both ends
-    Index= pd.Series(np.linspace(-range_around_event[0], range_around_event[1], target_length)) # common index
-    
+    Index = pd.Series(np.linspace(-range_around_event[0], range_around_event[1], target_length))  # common index
+ 
     for event_time in event_times:
-        
         # Determine the time range for each chunk
         start = event_time - before_0
         end = event_time + after_0
-        
+  
         # Extract the chunk from the trace column
         chunk = df[trace].loc[start:end]
-        runspeed = df['movementX'].loc[start:event_time].mean() #Saving mean run speed up until halt
-        truningspeed = df['movementY'].loc[start:event_time].mean() 
+        runspeed = df['movementX'].loc[start:event_time].mean()  # Saving mean run speed up until halt
+        turningspeed = df['movementY'].loc[start:event_time].mean()
+        
         # Normalize the index to start at -before_0
         chunk.index = (chunk.index - chunk.index[0]) - before_0
+        
         # Check if the chunk is shorter than the target length
         if len(chunk) < target_length:
             # Pad the chunk with NaN values at the end to reach the target length
             padding = pd.Series([np.nan] * (target_length - len(chunk)), index=pd.RangeIndex(len(chunk), target_length))
             chunk = pd.concat([chunk, padding])
-            chunk.index = Index # Getting the same index as the others
-        
+            chunk.index = Index  # Getting the same index as the others
+    
         # Baseline the chunk
         baselined_chunk = baseline(chunk)
         
@@ -359,25 +466,28 @@ def align_to_event_start(df, trace, event_col, range_around_event):
         trace_chunk_list.append(chunk.values)
         bsl_trace_chunk_list.append(baselined_chunk.values)
         run_speed_list.append(runspeed)
+        turn_speed_list.append(turningspeed)
         event_index_list.append(event_time)  # Store the event time for use in final column names
-
-    # Convert lists of arrays to DataFrames
-    try:
+    
+    if len(event_times) < 1:
+        # Return empty DataFrames when there are no events
+        trace_chunks = pd.DataFrame()
+        bsl_trace_chunks = pd.DataFrame()
+        movement_speeds = pd.DataFrame()
+    else:
+        # Convert lists of arrays to DataFrames
         trace_chunks = pd.DataFrame(np.column_stack(trace_chunk_list), columns=event_index_list)
         bsl_trace_chunks = pd.DataFrame(np.column_stack(bsl_trace_chunk_list), columns=event_index_list)
         run_speeds = pd.DataFrame(np.column_stack(run_speed_list), columns=event_index_list)
+        turn_speeds = pd.DataFrame(np.column_stack(turn_speed_list), columns=event_index_list)
+        movement_speeds = pd.concat([run_speeds, turn_speeds])
+        
         # Set the index as the common time range index for each chunk
         trace_chunks.index = Index
         bsl_trace_chunks.index = Index
-        run_speeds.index = ['mean_moveX', 'mean_moveY']
-    
-        return trace_chunks, bsl_trace_chunks, run_speeds
-    
-    except ValueError:
-        if len(event_times) < 1:
-            print('could not align to events because there were none, will return nothing')
-            
-        return 0, 0, 0
+        movement_speeds.index = ['Mean_moveX', 'Mean_moveY']  # Set X and Y movement as movement speed index
+        
+    return trace_chunks, bsl_trace_chunks, movement_speeds
 
 
 
@@ -408,41 +518,45 @@ def view_session_mouse(mousedata_dict, mouse):
         color = ['forestgreen', 'blue']
     
         # Iterate over the traces in plotlist and plot each on a new row
-        for i, trace in enumerate(plotlist):
-            ax[i, s].plot(time, session_data[trace], color=color[i])
-            ax[i, s].set_title(f"{trace} - {session}")
+        try:
+            for i, trace in enumerate(plotlist):
+                ax[i, s].plot(time, session_data[trace], color=color[i])
+                ax[i, s].set_title(f"{trace} - {session}")
+                
+                # Plot shaded areas for each halt event
+                ymin, ymax = ax[i, s].get_ylim()
+                halt = ax[i, s].fill_between(time, ymin, ymax, where=event, color='grey', alpha=0.3)
             
-            # Plot shaded areas for each halt event
-            ymin, ymax = ax[i, s].get_ylim()
-            halt = ax[i, s].fill_between(time, ymin, ymax, where=event, color='grey', alpha=0.3)
-        
-        # Plot annotations for different blocks
-        block_colors = ['lightsteelblue', 'lightcoral', 'forestgreen']
-        colorcount = 0
-        for col in session_data:
-            if '_block' in col:
-                start = session_data.loc[session_data[col] == True].index[0]
-                end = session_data.loc[session_data[col] == True].index[-1]
-        
-                min_time, max_time = ax[0, s].get_xlim()
-                norm_start = norm(start, min_time, max_time)
-                norm_end = norm(end, min_time, max_time)
-                
-                # Add rectangles with alpha=0.1 to each trace subplot in this session
-                for i in range(len(plotlist)):
-                    ax[i, s].add_patch(Rectangle(
-                        (norm_start, 0), norm_end - norm_start, 1, 
-                        facecolor=block_colors[colorcount], alpha=0.1, clip_on=False, transform=ax[i, s].transAxes
-                    ))
-
-                # Add labels at the bottom of the last plot
-                ax[-1, s].text(norm_start + 0.05, -0.2, col, transform=ax[-1, s].transAxes,
-                               fontsize=10, verticalalignment='top')
-                ax[-1, s].add_patch(Rectangle(
-                    (norm_start, -0.15), norm_end - norm_start, -0.2, 
-                    facecolor=block_colors[colorcount], alpha=0.5, clip_on=False, transform=ax[-1, s].transAxes))
-                
-                colorcount += 1
+            # Plot annotations for different blocks
+            block_colors = ['lightsteelblue', 'lightcoral', 'forestgreen']
+            colorcount = 0
+            for col in session_data:
+                if '_block' in col:
+                    start = session_data.loc[session_data[col] == True].index[0]
+                    end = session_data.loc[session_data[col] == True].index[-1]
+            
+                    min_time, max_time = ax[0, s].get_xlim()
+                    norm_start = norm(start, min_time, max_time)
+                    norm_end = norm(end, min_time, max_time)
+                    
+                    # Add rectangles with alpha=0.1 to each trace subplot in this session
+                    for i in range(len(plotlist)):
+                        ax[i, s].add_patch(Rectangle(
+                            (norm_start, 0), norm_end - norm_start, 1, 
+                            facecolor=block_colors[colorcount], alpha=0.1, clip_on=False, transform=ax[i, s].transAxes
+                        ))
+    
+                    # Add labels at the bottom of the last plot
+                    ax[-1, s].text(norm_start + 0.05, -0.2, col, transform=ax[-1, s].transAxes,
+                                   fontsize=10, verticalalignment='top')
+                    ax[-1, s].add_patch(Rectangle(
+                        (norm_start, -0.15), norm_end - norm_start, -0.2, 
+                        facecolor=block_colors[colorcount], alpha=0.5, clip_on=False, transform=ax[-1, s].transAxes))
+                    
+                    colorcount += 1
+        except IndexError:
+            print(f'No data for {mouse} session {session}')
+            pass
 
     halt.set_label('halts')
     # Create one legend for the figure
@@ -501,7 +615,7 @@ def plot_compare_blocks(block_dict, event):
                                                          color='grey', alpha=0.1))
                 # Set title and labels for the first row
                 if row == 0:
-                    ax[row, col].set_title(f"{block_name} loop responses")
+                    ax[row, col].set_title(f"{block_name} responses")
                 if col == 0:
                     ax[row, col].set_ylabel(f"Mouse: {mouse}")
             except AttributeError:

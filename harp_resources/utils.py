@@ -45,7 +45,8 @@ class TimestampedCsvReader(Csv):
 
 class PhotometryReader(Csv):
     def __init__(self, pattern):
-        super().__init__(pattern, columns=["Time", "Events", "CH1-410", "CH1-470", "CH1-560", "U"], extension="csv")
+        #super().__init__(pattern, columns=["Time", "Events", "CH1-410", "CH1-470", "CH1-560", "U"], extension="csv")
+        super().__init__(pattern, columns=["TimeStamp", "470_dfF", "410_dfF", "56_dfF"], extension="csv")
         self._rawcolumns = self.columns
 
     def read(self, file):
@@ -87,6 +88,7 @@ def load(reader: Reader, root: Path) -> pd.DataFrame:
 def load_harp(reader: Harp, root: Path) -> pd.DataFrame:
     root = Path(root)
     pattern = f"{root.joinpath(root.name)}_{reader.register.address}_*.bin"
+    print(pattern)
     data = [reader.read(file) for file in glob(pattern)]
     return pd.concat(data)
 
