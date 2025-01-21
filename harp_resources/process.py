@@ -295,26 +295,42 @@ def calculate_conversions_second_approach(data_path, photometry_path=None, verbo
     if photometry_path:
         OnixDigital = utils.read_OnixDigital(data_path)
         PhotometryEvents = utils.read_fluorescence_events(photometry_path)
-
+    
         onix_digital_array = OnixDigital["Value.Clock"].values
         photometry_events_array = PhotometryEvents['TimeStamp'].values
-
-        # Handling the mismatching lengths error
-        if photometry_events_array.shape[0] != onix_digital_array.shape[0]:
-            print('WARNING: "Unlucky" dataset with unmatching lengths of OnixDigital and Events.csv (photometry software events) logs. See https://github.com/ikharitonov/vestibular_vr_pipeline/issues/12 for more information.')
-            min_length = min(onix_digital_array.shape[0], photometry_events_array.shape[0])
-            print(f'OnixDigital has {onix_digital_array.shape[0]} events and Events.csv has {photometry_events_array.shape[0]} events. Cutting to the minimum {min_length} events from the beggining, aligning by the end.\n')
-            photometry_events_array = photometry_events_array[-min_length:]
-            onix_digital_array = onix_digital_array[-min_length:]
-
-        # define conversion functions between timestamps (onix to harp) 
+    
+        # Calculate time differences (to make the signals stationary for cross-correlation)
+        time_series_1 = np.diff(onix_digital_array)
+        time_series_2 = np.diff(photometry_events_array)
+    
+        # Cross-correlation
+        correlation = correlate(time_series_1, time_series_2, mode='full')
+        offset = np.argmax(correlation) - (len(time_series_2) - 1)
+    
+        print(f"Calculated offset between OnixDigital and PhotometryEvents: {offset}")
+    
+        # Adjust arrays based on the calculated offset
+        if offset < 0:  # PhotometryEvents starts after OnixDigital
+            print(f"PhotometryEvents starts later by {abs(offset)} indices. Adjusting...")
+            photometry_events_array = photometry_events_array[abs(offset):]
+        elif offset > 0:  # OnixDigital starts after PhotometryEvents
+            print(f"OnixDigital starts later by {offset} indices. Adjusting...")
+            onix_digital_array = onix_digital_array[offset:]
+    
+        # Align lengths after applying offset
+        min_length = min(len(onix_digital_array), len(photometry_events_array))
+        onix_digital_array = onix_digital_array[:min_length]
+        photometry_events_array = photometry_events_array[:min_length]
+    
+        # Define conversion functions between timestamps (photometry to onix and harp)
         m, b = np.polyfit(photometry_events_array, onix_digital_array, 1)
-        photometry_to_onix_time = lambda x: x*m + b
+        photometry_to_onix_time = lambda x: x * m + b
         photometry_to_harp_time = lambda x: onix_to_harp_timestamp(photometry_to_onix_time(x))
         onix_time_to_photometry = lambda x: (x - b) / m
-        
+    
         output["photometry_to_harp_time"] = photometry_to_harp_time
         output["onix_time_to_photometry"] = onix_time_to_photometry
+
 
     if verbose:
         print('Following conversion functions calculated:')
@@ -414,4 +430,231 @@ def save_streams_as_h5(data_path, resampled_streams, streams_to_save_pattern={'H
                 # Save each stream as a dataset within the source group
                 source_group.create_dataset(stream_name, data=stream_data.values)
 
+<<<<<<< Updated upstream
     print(f'Data saved as H5 file in {time() - start_time:.2f} seconds to {output_file}.')
+=======
+    print(f'Data saved as H5 file in {time() - start_time:.2f} seconds to {output_file}.')
+
+
+def add_experiment_events(data_dict, events_dict, mouse_info):
+    # Iterate over each mouse key in the dictionaries
+    for mouse_key in data_dict:
+        # Retrieve the main and event DataFrames
+        main_df = data_dict[mouse_key]
+        event_df = events_dict[mouse_key]
+
+        # Ensure both indices are sorted
+        main_df = main_df.sort_index()
+        event_df = event_df.sort_index()
+
+        # Perform a merge_asof on the index to add 'Value' as 'ExperimentEvents' with backward matching
+        merged_df = pd.merge_asof(
+            main_df,
+            event_df[['Value']],  # Only select the 'Value' column from event_df
+            left_index=True,
+            right_index=True,
+            direction='backward',
+            tolerance=0  # Adjust tolerance for matching on the index
+        )
+
+        # Rename the 'Value' column to 'ExperimentEvents'
+        if 'ExperimentEvents' in merged_df.columns:
+            merged_df['ExperimentEvents'] = merged_df.pop('Value')  # Replace existing column with the new 'Value' column
+            print(f'Pre-existing ExperimentEvents column was replaced with new for {mouse_key}')
+        else:
+            merged_df = merged_df.rename(columns={'Value': 'ExperimentEvents'})  # Add new column
+            print(f'Added new ExperimentEvents for {mouse_key}')
+
+        # Add metadata from event_df
+        merged_df['Experiment'] = event_df['experiment'].unique()[0]
+        merged_df['Session'] = event_df['session'].unique()[0]
+
+        # Add mouse ID, sex, and brain area
+        mouse_info_name = mouse_key[:4]
+        merged_df['mouseID'] = mouse_info_name
+        merged_df['sex'] = mouse_info[mouse_info_name]['sex']
+        merged_df['area'] = mouse_info[mouse_info_name]['area']
+
+        # Update the dictionary with the merged DataFrame
+        data_dict[mouse_key] = merged_df
+
+    return data_dict
+
+def add_no_halt_column(data_dict, events_dict):
+    # Iterate over each mouse in the dictionaries
+    for mouse_key in data_dict:
+        main_df = data_dict[mouse_key]  # Large DataFrame
+        event_df = events_dict[mouse_key]  # Small DataFrame
+
+        # Ensure the index of the event_df is named 'Seconds' and is numeric (milliseconds)
+        event_df.index.name = 'Seconds'
+
+        # Create a new column 'No_halt' in the main_df
+        main_df['No_halt'] = False
+
+        # Filter the 'No halt' events from event_df
+        no_halt_events = event_df[event_df['Value'] == 'No halt']
+
+        # Use pd.merge_asof to match the nearest milliseconds from main_df index to event_df index
+        merged_df = pd.merge_asof(
+            main_df,
+            no_halt_events[['Value']],  # Only bring in the 'Value' column where 'No halt' appears
+            left_index=True,  # main_df has time in its index
+            right_index=True,  # no_halt_events has time in its index (both in ms)
+            direction='backward',  # Choose closest event on or before the timestamp
+            tolerance=0.00005  # Match down to 4 decimals
+        )
+
+        # Explicitly convert 'Value' to string and fill NaN with 'False'
+        main_df['No_halt'] = (merged_df['Value'].astype(str).fillna('') == 'No halt')
+
+        # Update the dictionary with the modified DataFrame
+        data_dict[mouse_key] = main_df
+
+        print('No_halt events added to', mouse_key)
+
+        # Verification
+        event_len = len(events_dict[mouse_key].loc[events_dict[mouse_key].Value == 'No halt'])
+        data_len = len(data_dict[mouse_key].loc[data_dict[mouse_key].No_halt == True])
+        if event_len != data_len:
+            print(f'For {mouse_key}, the number of actual no-halt events is {event_len} and the number of True values in the data now is {data_len}')
+        
+        if event_len == data_len:
+            print(f'  Correct number of no-halt events for {mouse_key}\n')
+
+    return data_dict
+
+
+def add_block_columns(df, event_df):
+    # Iterate through each index and event value in event_df
+    prev_column = None  # Tracks the column currently being filled as True
+    for idx, event in event_df['Value'].items():
+        if 'block started' in event:
+            print(event)
+            # Create a new column in df, filling with False initially
+            column_name = event.split()[0]+'_block'
+            df[column_name] = False
+
+            # If there was a previous column being filled as True, set it to False up to this point
+            if prev_column is not None:
+                df.loc[:idx, prev_column] = False
+
+            # Set the new column to True starting from this index
+            df.loc[idx:, column_name] = True
+            prev_column = column_name  # Track the events
+
+        elif 'Block timer elapsed' in event:
+    
+            # If there's a current active block, set its values to False up to this point
+            if prev_column is not None:
+                df.loc[idx:, prev_column] = False
+
+                prev_column = None  # Reset current column tracker
+
+    # Ensure that any remaining True blocks are set to False after their end
+    #if current_column is not None:
+     #   df.loc[:, current_column] = False
+    for col in df:
+        if 'block started' in col:
+            df.rename({col: f'{col.split()[0]}_block'}, inplace = True)
+    
+    return df
+
+def check_block_overlap(data_dict):
+    for mouse, df in data_dict.items():
+        # Choose columns that end with _block
+        block_columns = df.filter(regex='_block')
+        # Check if any row has more than one `True` at the same time in the `_block` columns
+        no_overlap = (block_columns.sum(axis=1) <= 1).all()
+        # Check if each `_block` column has at least one `True` value
+        all_columns_true = block_columns.any().all()
+        if no_overlap and all_columns_true:
+            print(f'For {mouse}: No overlapping True values, and each _block column has at least one True value')
+        elif no_overlap and not all_columns_true:
+            print(f'Not all block columns contains True Values for {mouse}')
+        elif not no_overlap and all_columns_true:
+            print(f'There are some overlap between the blocks {mouse}')
+
+
+def downsample_data(df, time_col='Seconds', interval=0.001):
+    '''
+    Uses pandas resample and aggregate functions to downsample the data to the desired interval. 
+    * Note: Aggregation functions must be applied for each variable that is to be included.
+    https://pandas.pydata.org/docs/reference/api/pandas.core.resample.Resampler.aggregate.html
+    * Note: because the donwsampling keeps the first non-NaN value in each interval, some values could be lost.
+    '''
+    # Convert the Seconds column to a TimedeltaIndex
+    df = df.set_index(pd.to_timedelta(df[time_col], unit='s'))
+
+    #define aggregation functions for all possible columns
+    aggregation_functions = {
+        '470_dfF': 'mean', # takes the mean signal of the datapoints going into each new downsampled datapoint
+        '560_dfF': 'mean',
+        'movementX': 'mean',
+        'movementY': 'mean',
+        'event': 'any', # events column is a bool, and if there is any True values in the interval, the downsampled datapoint will be True
+        'ExperimentEvents': lambda x: x.dropna().iloc[0] if not x.dropna().empty else None, #first non-NaN value in the interval 
+        'Experiment': 'first', # All values should be the same, so it can always just take the first string value
+        'Session': 'first',
+        'mouseID': 'first',
+        'sex': 'first',
+        'area': 'first',
+        'No_halt': 'any', 
+        'LinearMismatch_block': 'any', 
+        'LinearPlaybackMismatch_block': 'any',
+        'LinearRegular_block': 'any',
+        'LinearClosedloopMismatch_block':'any',
+        'LinearRegularMismatch_block':'any',
+        'LinearNormal_block':'any',
+    }
+
+    # Filter aggregation_functions to only include columns present in df
+    aggregation_functions = {key: func for key, func in aggregation_functions.items() if key in df.columns}
+
+    print('downsampling...')
+    # Resample with the specified interval and apply the filtered aggregations
+    downsampled_df = df.resample(f'{interval}s').agg(aggregation_functions)
+
+    # Reset the index to make the Seconds column normal again
+    downsampled_df = downsampled_df.reset_index()
+    downsampled_df[time_col] = downsampled_df[time_col].dt.total_seconds()  # Convert Timedelta back to seconds
+
+    # Forward fill for categorical columns if needed, only if they exist in downsampled_df
+    categorical_cols = ['Experiment', 'Session', 'mouseID', 'sex', 'area']
+    for col in categorical_cols:
+        if col in downsampled_df.columns:
+            downsampled_df[col] = downsampled_df[col].ffill()
+
+    # Remove consecutive duplicate values in the 'ExperimentEvents' column, if it exists
+    if 'ExperimentEvents' in downsampled_df.columns:
+        downsampled_df['ExperimentEvents'] = downsampled_df['ExperimentEvents'].where(
+            downsampled_df['ExperimentEvents'] != downsampled_df['ExperimentEvents'].shift()
+        )
+
+    return downsampled_df
+
+
+def test_event_numbers(downsampled_data, original_data, mouse):
+    '''
+    Counts number of True values in the No_halt columns in the original and the downsampled data
+    This will indicate whether information was lost in the downsampling.
+    If the original events somehow has been upsampled previously (for example if the tolerance was set too high in add_experiment_events()), 
+    repeatings of the same event can also lead to fewer True events in the downsampled df.
+    '''
+    nohalt_down = len(downsampled_data.loc[downsampled_data['No_halt']==True])
+    nohalt_original = len(original_data.loc[original_data['No_halt']==True])
+    if nohalt_down != nohalt_original:
+        print(f'mouse{mouse}')
+        print(f'There are actually {nohalt_original} no-halts, but the downsampled data only contains {nohalt_down}')
+        print('Should re-run the downsampling. Try changing interval lenght. Othewise, consider not downsampling\n')
+    if nohalt_down == nohalt_original:
+        print(f'mouse{mouse}')
+        print(f'There are {nohalt_original} no-halts, and downsampled data contains {nohalt_down}\n')
+
+
+
+
+
+    
+
+>>>>>>> Stashed changes
