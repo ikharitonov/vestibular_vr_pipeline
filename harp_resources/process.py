@@ -435,7 +435,26 @@ def save_streams_as_h5(data_path, resampled_streams, streams_to_save_pattern={'H
 =======
     print(f'Data saved as H5 file in {time() - start_time:.2f} seconds to {output_file}.')
 
-
+def read_ExperimentEvents(path):
+    filenames = os.listdir(path/'ExperimentEvents')
+    filenames = [x for x in filenames if x[:16]=='ExperimentEvents'] # filter out other (hidden) files
+    date_strings = [x.split('_')[1].split('.')[0] for x in filenames] 
+    sorted_filenames = pd.to_datetime(date_strings, format='%Y-%m-%dT%H-%M-%S').sort_values()
+    read_dfs = []
+    try:
+        for row in sorted_filenames:
+            read_dfs.append(pd.read_csv(path/'ExperimentEvents'/f"ExperimentEvents_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv"))
+        return pd.concat(read_dfs).reset_index().drop(columns='index')
+    except pd.errors.ParserError as e:
+        filename = f"ExperimentEvents_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv"
+        print(f'Tokenisation failed for file "{filename}".\n')
+        print(f'Exact description of error: {e}')
+        print('Likely due to extra commas in the "Value" column of ExperimentEvents. Please manually remove and run again.')
+        return None
+    except Exception as e:
+        print('Reading failed:', e)
+        return None
+        
 def add_experiment_events(data_dict, events_dict, mouse_info):
     # Iterate over each mouse key in the dictionaries
     for mouse_key in data_dict:
@@ -653,7 +672,80 @@ def test_event_numbers(downsampled_data, original_data, mouse):
 
 
 
+def load_h5_streams_to_dict(data_paths):
+    '''
+    Takes list of H5 file paths and, loads streams into dictionary, and save to dictionary named by mouse ID
+    '''
+    #dict to save streams:
+    reconstructed_dict = {} 
+    # File path to read the HDF5 file
+    for input_file in data_paths:
+        name = input_file.split('/')[-1][-7:-3] # Given that file name is of format: resampled_streams_2024-08-22T13-13-15_B3M6.h5 
+        
+        if not os.path.exists(input_file):
+            print(f'ERROR: {input_file} does not exist.')
+            return None
+    
+        # Open the HDF5 file to read data
+        with h5py.File(input_file, 'r') as h5file:
+            print(f'reconstructing streams for mouse {input_file.split('/')[-1][-7:-3]}, from session folder: {input_file.split('/')[-3]}')
+            # Read the common index (which was saved as Unix timestamps)
+            common_index = h5file['HARP_timestamps'][:]
+            
+            # Convert Unix timestamps back to pandas DatetimeIndex
+            # common_index = pd.to_datetime(common_index)
+            
+            # Initialize the dictionary to reconstruct the data
+            reconstructed_streams = {}
+            
+            # Iterate through the groups (sources) in the file
+            for source_name in h5file.keys():
+                if source_name == 'HARP_timestamps':
+                    # Skip the 'common_index' dataset, it's already loaded
+                    continue
+                
+                # Initialize a sub-dictionary for each source
+                reconstructed_streams[source_name] = {}
+                
+                # Get the group (source) and iterate over its datasets (streams)
+                source_group = h5file[source_name]
+                
+                for stream_name in source_group.keys():
+                    # Read the stream data
+                    stream_data = source_group[stream_name][:]
+                    
+                    # Reconstruct the original pd.Series with the common index
+                    reconstructed_streams[source_name][stream_name] = pd.Series(data=stream_data, index=common_index)
+                
+        reconstructed_dict[name] = reconstructed_streams
+        print(f'  --> {input_file.split('/')[-1][-7:-3]} streams reconstructed and added to dictionary \n')
+            
 
+    return reconstructed_dict
+
+    
+def moving_average_smoothing(X,k):
+    S = np.zeros(X.shape[0])
+    for t in range(X.shape[0]):
+        if t < k:
+            S[t] = np.mean(X[:t+1])
+        else:
+            S[t] = np.sum(X[t-k:t])/k
+    return S
+
+def running_unit_conversion(running_array):
+    resolution = 12000 # counts per inch
+    inches_per_count = 1 / resolution
+    meters_per_count = 0.0254 * inches_per_count
+    dt = 0.01 # for OpticalTrackingRead0Y(46)
+    linear_velocity = meters_per_count / dt # meters per second per count
+    
+    # ball_radius = 0.1 # meters 
+    # angular_velocity = linear_velocity / ball_radius # radians per second per count
+    # angular_velocity = angular_velocity * (180 / np.pi) # degrees per second per count
+    # print(angular_velocity)
+    
+    return running_array * linear_velocity * 100
 
     
 
