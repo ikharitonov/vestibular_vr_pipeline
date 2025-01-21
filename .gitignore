@@ -1,5 +1,7 @@
 .ipynb_checkpoints
 .pyc
+<<<<<<< Updated upstream
+=======
 2_DEMO_perievent_raw_streams_grab.ipynb
 2_DEMO_perievent_raw_streams_grab.ipynb
 2_DEMO_perievent_raw_streams_grab.ipynb
@@ -16,3 +18,5 @@ harp_resources/process.py
 harp_resources/process.py
 *.pyc
 *.png
+1_DEMO_data_extraction_pipeline.ipynb
+>>>>>>> Stashed changes

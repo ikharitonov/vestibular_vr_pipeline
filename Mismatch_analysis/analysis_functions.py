@@ -16,7 +16,7 @@ import sys
 project_root = os.path.abspath(os.path.join(os.getcwd(), "../"))
 sys.path.append(project_root)
 
-from harp_resources import process, utils
+#from harp_resources import process, utils
 
 
 def load_h5_streams_to_dict(data_paths):
@@ -344,8 +344,15 @@ def pooling_data(datasets):
     return pooled_data
 
 
+#Define dtypes for efficient reading of csvs into pandas dataframe
+#https://pandas.pydata.org/docs/user_guide/basics.html#basics-dtypes
 dtype_dict = {'Seconds':np.float64, 
     '470_dfF':np.float64,
+    '560_dfF':np.float64,
+    '410_dfF':np.float64,
+    'z_470':np.float64,
+    'z_410':np.float64,
+    'z_560':np.float64,
     'movementX':np.float64, 
     'movementY':np.float64,
     'event':bool,
@@ -357,7 +364,9 @@ dtype_dict = {'Seconds':np.float64,
     'area':object,
     'No_halt':bool,
     'LinearMismatch_block':bool,
-    'LinearPlaybackMismatch_block':bool}
+    'LinearPlaybackMismatch_block':bool,
+    'LinearRegularMismatch_block': bool,
+    'LinearNormal_block': bool}
 
 
 
