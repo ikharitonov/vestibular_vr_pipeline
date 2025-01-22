@@ -36,7 +36,7 @@ pip install harp-python
 ### Install SLEAP
 
 ```python
-conda install --channel conda-forge sleap
+pip install sleap
 ```
 
 ### Install other packages
