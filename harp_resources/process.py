@@ -430,9 +430,6 @@ def save_streams_as_h5(data_path, resampled_streams, streams_to_save_pattern={'H
                 # Save each stream as a dataset within the source group
                 source_group.create_dataset(stream_name, data=stream_data.values)
 
-<<<<<<< Updated upstream
-    print(f'Data saved as H5 file in {time() - start_time:.2f} seconds to {output_file}.')
-=======
     print(f'Data saved as H5 file in {time() - start_time:.2f} seconds to {output_file}.')
 
 def read_ExperimentEvents(path):
@@ -671,7 +668,6 @@ def test_event_numbers(downsampled_data, original_data, mouse):
         print(f'There are {nohalt_original} no-halts, and downsampled data contains {nohalt_down}\n')
 
 
-
 def load_h5_streams_to_dict(data_paths):
     '''
     Takes list of H5 file paths and, loads streams into dictionary, and save to dictionary named by mouse ID
@@ -747,6 +743,4 @@ def running_unit_conversion(running_array):
     
     return running_array * linear_velocity * 100
 
-    
 
->>>>>>> Stashed changes
