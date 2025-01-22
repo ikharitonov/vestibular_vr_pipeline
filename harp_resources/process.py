@@ -684,7 +684,10 @@ def load_h5_streams_to_dict(data_paths):
     
         # Open the HDF5 file to read data
         with h5py.File(input_file, 'r') as h5file:
-            print(f'reconstructing streams for mouse {input_file.split('/')[-1][-7:-3]}, from session folder: {input_file.split('/')[-3]}')
+            #print(f'reconstructing streams for mouse {input_file.split('/')[-1][-7:-3]}, from session folder: {input_file.split('/')[-3]}')
+            mouse_id_x = input_file.split("/")[-1][-7:-3]
+            session_folder_x = input_file.split("/")[-3]
+            print(f"reconstructing streams for mouse {mouse_id_x}, from session folder: {session_folder_x}")
             # Read the common index (which was saved as Unix timestamps)
             common_index = h5file['HARP_timestamps'][:]
             
@@ -714,7 +717,7 @@ def load_h5_streams_to_dict(data_paths):
                     reconstructed_streams[source_name][stream_name] = pd.Series(data=stream_data, index=common_index)
                 
         reconstructed_dict[name] = reconstructed_streams
-        print(f'  --> {input_file.split('/')[-1][-7:-3]} streams reconstructed and added to dictionary \n')
+        print(f'  --> {mouse_id_x} streams reconstructed and added to dictionary \n')
             
 
     return reconstructed_dict
