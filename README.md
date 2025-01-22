@@ -16,8 +16,10 @@ python3 -m ipykernel install --user --name=aeon
 ```
 
 ### Install _aeon\_mecha_
+As of 2025/01, this only works with python 3.11 and not later python versions. 
 
 ```python
+conda install python=3.11
 git clone https://github.com/SainsburyWellcomeCentre/aeon_mecha.git
 cd aeon_mecha
 python -m pip install -e .
