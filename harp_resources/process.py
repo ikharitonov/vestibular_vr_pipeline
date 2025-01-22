@@ -430,9 +430,6 @@ def save_streams_as_h5(data_path, resampled_streams, streams_to_save_pattern={'H
                 # Save each stream as a dataset within the source group
                 source_group.create_dataset(stream_name, data=stream_data.values)
 
-<<<<<<< Updated upstream
-    print(f'Data saved as H5 file in {time() - start_time:.2f} seconds to {output_file}.')
-=======
     print(f'Data saved as H5 file in {time() - start_time:.2f} seconds to {output_file}.')
 
 
@@ -653,8 +650,3 @@ def test_event_numbers(downsampled_data, original_data, mouse):
 
 
 
-
-
-    
-
->>>>>>> Stashed changes
