@@ -33,17 +33,18 @@ In macOS if you get an error message, use
 pip install harp-python
 ```
 
+### Install SLEAP
+
+```python
+conda install --channel conda-forge sleap
+```
+
 ### Install other packages
 
 ```python
 pip install lsq-ellipse
 pip install h5py
 pip install opencv-python
-```
-### Install SLEAP
-
-```python
-conda install --channel conda-forge sleap
 ```
 
 ## Repository contents
