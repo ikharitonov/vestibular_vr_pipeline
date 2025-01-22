@@ -8,6 +8,8 @@ from datetime import timedelta
 from datetime import datetime
 import aeon.io.api as api
 import h5py
+from scipy.signal import correlate
+import os
 
 def resample_stream(data_stream_df, resampling_period='0.1ms', method='linear'):
     return data_stream_df.resample(resampling_period).last().interpolate(method=method)
@@ -297,7 +299,9 @@ def calculate_conversions_second_approach(data_path, photometry_path=None, verbo
         PhotometryEvents = utils.read_fluorescence_events(photometry_path)
     
         onix_digital_array = OnixDigital["Value.Clock"].values
-        photometry_events_array = PhotometryEvents['TimeStamp'].values
+        photometry_events_array = PhotometryEvents.index.values
+        #photometry_events_array = PhotometryEvents['TimeStamp'].values
+
     
         # Calculate time differences (to make the signals stationary for cross-correlation)
         time_series_1 = np.diff(onix_digital_array)
@@ -482,8 +486,8 @@ def add_experiment_events(data_dict, events_dict, mouse_info):
             print(f'Added new ExperimentEvents for {mouse_key}')
 
         # Add metadata from event_df
-        merged_df['Experiment'] = event_df['experiment'].unique()[0]
-        merged_df['Session'] = event_df['session'].unique()[0]
+        #merged_df['Experiment'] = event_df['experiment'].unique()[0]
+        #merged_df['Session'] = event_df['session'].unique()[0]
 
         # Add mouse ID, sex, and brain area
         mouse_info_name = mouse_key[:4]

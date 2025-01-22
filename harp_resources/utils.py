@@ -235,7 +235,7 @@ def read_SessionSettings(dataset_path, print_contents=False):
 
 def read_fluorescence(photometry_data_path):
     try:
-        Fluorescence = pd.read_csv(photometry_data_path/'Processed_Fluorescence.csv', skiprows=1, index_col=False)
+        Fluorescence = pd.read_csv(photometry_data_path/'Processed_Fluorescence.csv', skiprows=0, index_col=False)
     except FileNotFoundError:
         Fluorescence = pd.read_csv(photometry_data_path/'Fluorescence.csv', skiprows=1, index_col=False)
         

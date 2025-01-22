@@ -396,8 +396,8 @@ def filter_data(data, filters = []):
         'B3M6': ['mouseID', 'B3M6'],
         'B3M7': ['mouseID', 'B3M7'],
         'B3M8': ['mouseID', 'B3M8'],
-        'halt': ['event', True],
-        'not_halt': ['event', False],
+        'halt': ['halt', True],
+        'not_halt': ['halt', False],
         'day1': ['Session', 'day1'],
         'day2': ['Session', 'day1'],
         'MM': ['Experiment', 'MMclosed-open'],
@@ -426,7 +426,7 @@ def norm(x, min, max):
     return normal
 
 
-def align_to_event_start(df, trace, event_col, range_around_event):
+def align_to_event_start(df, trace, event_col, range_around_event, sampling_rate = 0.001):
     """
     Align trace data around events with improved handling for trace chunks.
     """
@@ -444,7 +444,7 @@ def align_to_event_start(df, trace, event_col, range_around_event):
     after_0 = range_around_event[1]
     
     # Calculate the target length of each chunk based on the sampling rate
-    sampling_rate = 0.001
+    sampling_rate = sampling_rate
     target_length = int(((before_0 + after_0) / sampling_rate) + 1)  # Include both ends
     Index = pd.Series(np.linspace(-range_around_event[0], range_around_event[1], target_length))  # common index
  
