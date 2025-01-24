@@ -8,6 +8,7 @@ from datetime import timedelta
 from datetime import datetime
 import aeon.io.api as api
 import h5py
+from scipy.signal import correlate
 
 def resample_stream(data_stream_df, resampling_period='0.1ms', method='linear'):
     return data_stream_df.resample(resampling_period).last().interpolate(method=method)
@@ -359,6 +360,46 @@ def calculate_conversions_second_approach(data_path, photometry_path=None, verbo
 
     return output
 
+def calculate_conversions_second_approach(data_path, photometry_path=None, verbose=True):
+    output = {}
+    onix_digital = read_OnixDigital(data_path)
+    
+    # Synchronization logic
+    onix_digital_array = onix_digital["Value.Clock"].values
+    if photometry_path:
+        photometry_events = utils.read_fluorescence_events(photometry_path)
+        photometry_array = photometry_events['TimeStamp'].values
+
+        # Synchronization through cross-correlation
+        time_series_1 = np.diff(onix_digital_array)
+        time_series_2 = np.diff(photometry_array)
+        correlation = correlate(time_series_1, time_series_2, mode='full')
+        offset = np.argmax(correlation) - (len(time_series_2) - 1)
+
+        # Adjust offsets
+        if offset < 0:
+            photometry_array = photometry_array[abs(offset):]
+        elif offset > 0:
+            onix_digital_array = onix_digital_array[offset:]
+
+        # Align lengths
+        min_length = min(len(onix_digital_array), len(photometry_array))
+        onix_digital_array = onix_digital_array[:min_length]
+        photometry_array = photometry_array[:min_length]
+
+        # Conversion functions
+        m, b = np.polyfit(photometry_array, onix_digital_array, 1)
+        photometry_to_onix_time = lambda x: x * m + b
+        photometry_to_harp_time = lambda x: onix_to_harp_timestamp(photometry_to_onix_time(x))
+
+        output["photometry_to_harp_time"] = photometry_to_harp_time
+
+    if verbose:
+        print("Calculated conversions:", list(output.keys()))
+
+    return output
+
+
 def select_from_photodiode_data(OnixAnalogClock, OnixAnalogData, hard_start_time, harp_end_time, conversions):
 
     start_time = time()
@@ -684,7 +725,9 @@ def load_h5_streams_to_dict(data_paths):
     
         # Open the HDF5 file to read data
         with h5py.File(input_file, 'r') as h5file:
-            print(f'reconstructing streams for mouse {input_file.split('/')[-1][-7:-3]}, from session folder: {input_file.split('/')[-3]}')
+            print(f"reconstructing streams for mouse {input_file.split('/')[-1][-7:-3]}, "f"from session folder: {input_file.split('/')[-3]}")
+
+
             # Read the common index (which was saved as Unix timestamps)
             common_index = h5file['HARP_timestamps'][:]
             
@@ -714,7 +757,7 @@ def load_h5_streams_to_dict(data_paths):
                     reconstructed_streams[source_name][stream_name] = pd.Series(data=stream_data, index=common_index)
                 
         reconstructed_dict[name] = reconstructed_streams
-        print(f'  --> {input_file.split('/')[-1][-7:-3]} streams reconstructed and added to dictionary \n')
+        print(f"  --> {input_file.split('/')[-1][-7:-3]} streams reconstructed and added to dictionary \n")
             
 
     return reconstructed_dict

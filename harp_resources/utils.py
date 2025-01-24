@@ -138,14 +138,40 @@ def read_ExperimentEvents(path):
         print('Reading failed:', e)
         return None
 
-def read_OnixDigital(path):
-    filenames = os.listdir(path/'OnixDigital')
-    filenames = [x for x in filenames if x[:11]=='OnixDigital'] # filter out other (hidden) files
-    sorted_filenames = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in filenames])).sort_values()
-    read_dfs = []
-    for row in sorted_filenames:
-        read_dfs.append(pd.read_csv(path/'OnixDigital'/f"OnixDigital_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv"))
-    return pd.concat(read_dfs).reset_index().drop(columns='index')
+def read_OnixDigital(data_path, version=None):
+    """
+    Reads OnixDigital files from the specified path based on the detected or provided version.
+    """
+    if version is None:
+        # Automatically detect the version
+        filenames = os.listdir(data_path / 'OnixDigital')
+        if any('OnixDigital' in fname for fname in filenames):
+            version = "version1"
+        elif any('Clock' in fname for fname in filenames):
+            version = "version3"
+        else:
+            version = "version2"
+    
+    if version == "version1":
+        filenames = [x for x in os.listdir(data_path / 'OnixDigital') if x.startswith('OnixDigital')]
+        sorted_filenames = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in filenames])).sort_values()
+        dfs = [pd.read_csv(data_path / 'OnixDigital' / f"OnixDigital_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv") for row in sorted_filenames]
+        return pd.concat(dfs).reset_index(drop=True)
+
+    elif version == "version2":
+        onix_digital_reader = utils.TimestampedCsvReader(
+            "OnixDigital",
+            columns=["Clock", "HubClock", "DigitalInputs0", "DigitalInputs1", "DigitalInputs2", "DigitalInputs3", 
+                     "DigitalInputs4", "DigitalInputs5", "DigitalInputs6", "DigitalInputs7", "DigitalInputs8", "Buttons"]
+        )
+        return utils.load_2(onix_digital_reader, data_path)
+
+    elif version == "version3":
+        return pd.read_csv(data_path / 'OnixDigital' / 'onix_digital.csv', sep=';')  # Example path; adjust as needed.
+
+    else:
+        raise ValueError(f"Unsupported OnixDigital version: {version}")
+
 
 def read_OnixAnalogFrameCount(path):
     filenames = os.listdir(path/'OnixAnalogFrameCount')
