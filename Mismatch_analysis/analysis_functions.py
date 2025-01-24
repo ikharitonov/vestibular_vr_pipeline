@@ -1,4 +1,4 @@
-import h5py
+#import h5py
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -11,12 +11,13 @@ import numpy as np
 from matplotlib.patches import Rectangle
 import os
 import sys
+from scipy.stats import sem
 
 # Add the root directory to the Python path
 project_root = os.path.abspath(os.path.join(os.getcwd(), "../"))
 sys.path.append(project_root)
 
-from harp_resources import process, utils
+#from harp_resources import process, utils
 
 
 def load_h5_streams_to_dict(data_paths):
@@ -513,74 +514,95 @@ def baseline(chunk):
     return baselined_chunk
 
 
-def view_session_mouse(mousedata_dict, mouse):
+def view_session_mouse(mousedata_dict, mouse, plotlist=['470_dfF', 'movementX']):
+    """
+    Plot specified traces for a given mouse across sessions, including event-based highlighting and block annotations.
+    
+    Parameters:
+    - mousedata_dict: Dictionary containing session data with DataFrames.
+    - mouse: Mouse identifier (e.g., 'B3M3').
+    - plotlist: List of column names to plot (e.g., ['470_dfF', 'movementX']).
+    
+    Returns:
+    - fig, ax: Figure and axes of the generated plots.
+    """
     print('\033[1m' + f'Plotted traces for {mouse}' + '\033[0m')
+
+    # Determine the number of sessions and traces
+    num_sessions = len(mousedata_dict)
+    num_traces = len(plotlist)
     
-    plotlist = ['470_dfF', 'movementX']
-    fig, ax = plt.subplots(len(plotlist), len(mousedata_dict), figsize=(15, 10), sharex=True)  # sharex=True for a shared x-axis
+    # Create subplots
+    fig, ax = plt.subplots(
+        num_traces, num_sessions,
+        figsize=(15, 5 * num_traces), sharex=True
+    )
     
+    # Ensure `ax` is a 2D array for consistent indexing
+    if num_traces == 1:
+        ax = [ax]  # If only one trace, wrap in a list to index properly
+    elif num_sessions == 1:
+        ax = [[ax[i]] for i in range(num_traces)]  # Handle single session edge case
+
+    # Loop through sessions and plot data for the specified mouse
     for s, (session, session_data) in enumerate(mousedata_dict.items()):
+        # Filter data for the specified mouse
+        mouse_data = session_data[session_data['mouseID'] == mouse]
         
-        # Getting the mouse-specific data from the session
-        time = session_data.index
-        event = session_data.halt
-        color = ['forestgreen', 'blue']
-    
-        # Iterate over the traces in plotlist and plot each on a new row
-        try:
-            for i, trace in enumerate(plotlist):
-                ax[i, s].plot(time, session_data[trace], color=color[i])
-                ax[i, s].set_title(f"{trace} - {session}")
+        if mouse_data.empty:
+            print(f"No data for {mouse} in session {session}")
+            continue
+
+        time = mouse_data.index
+        event = mouse_data['halt']
+        colors = plt.cm.tab10.colors  # Use a colormap to handle multiple traces
+
+        for i, trace in enumerate(plotlist):
+            if trace not in mouse_data.columns:
+                print(f"Trace '{trace}' not found in session {session}")
+                continue
+
+            # Plot the trace
+            ax[i][s].plot(time, mouse_data[trace], color=colors[i % len(colors)])
+            ax[i][s].set_title(f"{trace} - {session}")
+            ax[i][s].set_ylabel(trace)
+            
+            # Plot shaded areas for halt events
+            ymin, ymax = ax[i][s].get_ylim()
+            ax[i][s].fill_between(time, ymin, ymax, where=event, color='grey', alpha=0.3)
+
+        # Plot annotations for block columns
+        block_colors = ['lightsteelblue', 'lightcoral', 'forestgreen']
+        colorcount = 0
+        for col in mouse_data.columns:
+            if '_block' in col and mouse_data[col].any():
+                block_data = mouse_data[mouse_data[col]]
+                start = block_data.index[0]
+                end = block_data.index[-1]
                 
-                # Plot shaded areas for each halt event
-                ymin, ymax = ax[i, s].get_ylim()
-                halt = ax[i, s].fill_between(time, ymin, ymax, where=event, color='grey', alpha=0.3)
-            
-            # Plot annotations for different blocks
-            block_colors = ['lightsteelblue', 'lightcoral', 'forestgreen']
-            colorcount = 0
-            for col in session_data:
-                if '_block' in col:
-                    start = session_data.loc[session_data[col] == True].index[0]
-                    end = session_data.loc[session_data[col] == True].index[-1]
-            
-                    min_time, max_time = ax[0, s].get_xlim()
-                    norm_start = norm(start, min_time, max_time)
-                    norm_end = norm(end, min_time, max_time)
-                    
-                    # Add rectangles with alpha=0.1 to each trace subplot in this session
-                    for i in range(len(plotlist)):
-                        ax[i, s].add_patch(Rectangle(
-                            (norm_start, 0), norm_end - norm_start, 1, 
-                            facecolor=block_colors[colorcount], alpha=0.1, clip_on=False, transform=ax[i, s].transAxes
-                        ))
-    
-                    # Add labels at the bottom of the last plot
-                    ax[-1, s].text(norm_start + 0.05, -0.2, col, transform=ax[-1, s].transAxes,
-                                   fontsize=10, verticalalignment='top')
-                    ax[-1, s].add_patch(Rectangle(
-                        (norm_start, -0.15), norm_end - norm_start, -0.2, 
-                        facecolor=block_colors[colorcount], alpha=0.5, clip_on=False, transform=ax[-1, s].transAxes))
-                    
-                    colorcount += 1
-        except IndexError:
-            print(f'No data for {mouse} session {session}')
-            pass
+                for i in range(num_traces):
+                    ax[i][s].add_patch(Rectangle(
+                        (start, ax[i][s].get_ylim()[0]), end - start, ax[i][s].get_ylim()[1] - ax[i][s].get_ylim()[0],
+                        facecolor=block_colors[colorcount % len(block_colors)], alpha=0.1, edgecolor=None
+                    ))
+                
+                # Annotate the block name below the x-axis
+                ax[-1][s].text(
+                    (start + end) / 2,  # Center of the block
+                    ax[-1][s].get_ylim()[0] - 0.1 * (ax[-1][s].get_ylim()[1] - ax[-1][s].get_ylim()[0]),  # Position below x-axis
+                    col, fontsize=10, verticalalignment='top', color=block_colors[colorcount % len(block_colors)],
+                    fontweight='bold', ha='center'
+                )
+                colorcount += 1
 
-    halt.set_label('halts')
-    # Create one legend for the figure
-    fig.legend(fontsize=12)
-    
-    # Update font size and layout
-    plt.rcParams.update({'font.size': 10})
-    fig.tight_layout(pad=1.08)
+    # Adjust layout
+    fig.tight_layout(pad=2.0)
     plt.show()
-    try:
-        return fig, ax
-    except TypeError:
-        fig, ax = plt.subplots(len(plotlist), len(mousedata_dict))
-        return fig, ax
+    
+    return fig, ax
 
+
+        
 def plot_compare_blocks(block_dict, event):
     # Determine number of blocks (columns) and maximum number of mice (rows)
     num_blocks = len(block_dict)
@@ -707,4 +729,339 @@ def extract_aligned_data(aligned_data_dict):
     return output_df
 
 
+
+def align_to_event_start(df, trace_cols_to_baseline, trace_cols_no_baseline, event_col, range_around_event, sampling_rate=0.001):
+    """
+    Align multiple trace columns around events and apply baseline correction to specified traces.
     
+    Parameters:
+    df (pd.DataFrame): Input data.
+    trace_cols_to_baseline (list): List of column names for traces to baseline (e.g., ['470_dfF', 'movementX']).
+    trace_cols_no_baseline (list): List of column names for traces not to baseline.
+    event_col (str): Column name marking events.
+    range_around_event (list): Time range around the event [before, after].
+    sampling_rate (float): Sampling rate in seconds (default 0.001).
+    
+    Returns:
+    dict: Contains aligned trace chunks for each trace column.
+    """
+    aligned_chunks = {col: [] for col in trace_cols_to_baseline + trace_cols_no_baseline}  # Initialize a dictionary to store aligned chunks for each column
+    event_index_list = []
+    
+    # Identify event times (when the event starts)
+    event_times = df.loc[df[event_col] & ~df[event_col].shift(1, fill_value=False)].index
+    
+    # Time range to align around
+    before_0, after_0 = range_around_event
+    target_length = int(((before_0 + after_0) / sampling_rate) + 1)
+    index_range = pd.Series(np.linspace(-before_0, after_0, target_length))
+    
+    for event_time in event_times:
+        start, end = event_time - before_0, event_time + after_0
+        
+        # For each trace column, extract and align the chunk
+        for trace_col in trace_cols_to_baseline:
+            chunk = df[trace_col].loc[start:end]
+            
+            # Padding if the chunk is smaller than the target length
+            if len(chunk) < target_length:
+                padding = pd.Series([np.nan] * (target_length - len(chunk)), index=pd.RangeIndex(len(chunk), target_length))
+                chunk = pd.concat([chunk, padding])
+            
+            # Baseline correction: subtract the mean of the first second prior to the event
+            baseline_window = int(before_0 / sampling_rate)
+            baseline_value = chunk.iloc[:baseline_window].mean()  # Mean of the first second before the event
+            chunk = chunk - baseline_value  # Baseline correction
+            
+            chunk.index = index_range  # Align the index to the specified time range
+            
+            aligned_chunks[trace_col].append(chunk.values)
+        
+        # For traces without baseline correction, just align them
+        for trace_col in trace_cols_no_baseline:
+            chunk = df[trace_col].loc[start:end]
+            
+            # Padding if the chunk is smaller than the target length
+            if len(chunk) < target_length:
+                padding = pd.Series([np.nan] * (target_length - len(chunk)), index=pd.RangeIndex(len(chunk), target_length))
+                chunk = pd.concat([chunk, padding])
+            
+            chunk.index = index_range  # Align the index to the specified time range
+            
+            aligned_chunks[trace_col].append(chunk.values)
+        
+        # Keep track of the event indices (for later indexing in the result)
+        event_index_list.append(event_time)
+    
+    # If no event times were found, return empty DataFrames for all trace columns
+    if len(event_times) < 1:
+        return {col: pd.DataFrame() for col in trace_cols_to_baseline + trace_cols_no_baseline}
+    
+    # Add '_bsl' suffix to keys for baseline-corrected traces
+    aligned_chunks = {
+        (f'{col}_bsl' if col in trace_cols_to_baseline else col): aligned_chunks[col]
+        for col in aligned_chunks
+    }
+    
+    # Convert the list of aligned chunks into DataFrames for each trace column
+    result = {col: pd.DataFrame(np.column_stack(aligned_chunks[col]), columns=event_index_list) for col in aligned_chunks}
+    # Set the index to the time range
+    for col in result:
+        result[col].index = index_range
+    
+    return result
+
+def process_mouse_data(mouse_data, trace_cols_to_baseline, trace_cols_no_baseline, event_col, range_around_event, sampling_rate=0.001):
+    """
+    Process mouse data dynamically across sessions, blocks, and mice, aligning multiple trace columns
+    with baseline correction for specified columns.
+    
+    Parameters:
+    mouse_data (dict): Nested dictionary of data.
+    trace_cols_to_baseline (list): List of column names for traces to baseline (e.g., ['470_dfF', 'movementX']).
+    trace_cols_no_baseline (list): List of column names for traces not to baseline.
+    event_col (str): Column name marking events.
+    range_around_event (list): Time range around the event [before, after].
+    sampling_rate (float): Sampling rate in seconds (default 0.001).
+    
+    Returns:
+    dict: Processed data containing aligned traces for each trace column.
+    """
+    aligned_data = {}
+    
+    # Iterate through the nested data structure (sessions, blocks, mice)
+    for session, blocks in mouse_data.items():
+        aligned_data[session] = {}
+        for block, mice in blocks.items():
+            aligned_data[session][block] = {}
+            for mouse, df in mice.items():
+                # Call align_to_event_start for each mouse's data, with baseline correction for specified traces
+                aligned_result = align_to_event_start(df, trace_cols_to_baseline, trace_cols_no_baseline, event_col, range_around_event, sampling_rate)
+                aligned_data[session][block][mouse] = aligned_result
+    
+    return aligned_data
+
+
+
+def plot_compare_blocks(block_dict, trace):
+    """
+    Plot comparison across blocks for event-aligned data using baselined trace chunks.
+    
+    Parameters:
+    - block_dict (dict): Nested dictionary with event-aligned data.
+    - trace (str): The trace to align the traces, e.g., "bsl_trace_chunks".
+    """
+    # Determine number of blocks (columns) and maximum number of mice (rows)
+    num_blocks = len(block_dict)
+    max_mice = max(len(mice_data) for mice_data in block_dict.values())
+    
+    # Set up the figure with the determined number of rows and columns
+    fig, ax = plt.subplots(max_mice, num_blocks, figsize=(5 * num_blocks, 3 * max_mice), squeeze=False)
+    fig.suptitle("Comparison Across Blocks (Baselined Traces)", fontsize=16)
+    
+    # Iterate over blocks and mice to plot
+    for col_idx, (block, mice_data) in enumerate(block_dict.items()):
+        for row_idx, (mouse_id, mouse_data) in enumerate(mice_data.items()):
+            # Extract the baselined trace chunks for the specified trace
+            if trace in mouse_data:
+                trace_data = mouse_data[trace]
+                # Plot each trace
+                for column in trace_data.columns:
+                    ax[row_idx, col_idx].plot(trace_data.index, trace_data[column], c = 'grey', alpha = 0.2)
+                    
+                ax[row_idx, col_idx].plot(trace_data.index, trace_data.mean(axis=1), label=f'mean', c = 'blue', alpha = 0.5)
+                ax[row_idx, col_idx].fill_between(
+                trace_data.index,
+                trace_data.mean(axis=1) + trace_data.std(axis=1),
+                trace_data.mean(axis=1) - trace_data.std(axis=1),
+                color='blue',
+                alpha=0.3,
+            )
+            # Customize plot
+            ax[row_idx, col_idx].set_title(f"Block: {block}, Mouse: {mouse_id}")
+            ax[row_idx, col_idx].set_xlabel("Time (s)")
+            ax[row_idx, col_idx].set_ylabel("Signal")
+            ax[row_idx, col_idx].axvline()
+            #ax[row_idx, col_idx].legend(loc="upper right", fontsize=8)
+    
+    # Adjust layout
+    plt.tight_layout(rect=[0, 0, 1, 0.96])  # Leave space for the title
+    plt.show()
+
+
+
+def mouse_mean_bsl_data(aligned_data, trace):
+    """
+    Extract mean traces from the 'bsl_trace_chunks' key for each mouse and restructure the dictionary.
+
+    Parameters:
+    - aligned_data (dict): Original dictionary with structure:
+                           {session: block: mouse: 'trace_chunks': data, 'bsl_trace_chunks': data, ...}
+
+    Returns:
+    - processed_data (dict): Simplified dictionary with structure:
+                             {session: block: mouse: mean_bsl_trace}
+    """
+    processed_data = {}
+
+    for session, blocks in aligned_data.items():
+        processed_data[session] = {}
+        for block, mice in blocks.items():
+            processed_data[session][block] = pd.DataFrame()
+            for mouse, data in mice.items():
+                if trace in data:
+                    # Compute mean trace for 'bsl_trace_chunks'
+                    bsl_data = data[trace]  # Assumes a 2D array (trials x time)
+                    mean_bsl_trace = bsl_data.mean(axis=1) if bsl_data.size else np.nan
+                    
+                    processed_data[session][block][mouse] = mean_bsl_trace
+    return processed_data
+
+def plot_mean_across_blocks(session_blocks, control_blocks, title="Mean Across Blocks"):
+    """
+    Plot a single figure with the mean across mouse means for each block.
+    
+    Parameters:
+    - session_blocks (dict): Dictionary of session data, where keys are block names
+                             and values are DataFrames of aligned data.
+    - control_blocks (dict): Dictionary of control data with the same structure.
+    - title (str): Title of the plot.
+    """
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.spines[['right', 'top']].set_visible(False)
+
+    for block_name, mouse_data in session_blocks.items():
+        if mouse_data.empty:
+            print(f"No data for block: {block_name}")
+            continue
+
+        # Compute mean and std across mice
+        mean_across_mice = mouse_data.mean(axis=1)
+        std_across_mice = mouse_data.std(axis=1)
+
+        # Plot block trace
+        ax.plot(mean_across_mice, label=f'{block_name} Mean')
+        ax.fill_between(
+            mean_across_mice.index,
+            mean_across_mice - std_across_mice,
+            mean_across_mice + std_across_mice,
+            alpha=0.2,
+        )
+
+    for block_name, mouse_data in control_blocks.items():
+        if mouse_data.empty:
+            print(f"No data for control block: {block_name}")
+            continue
+
+        # Compute mean and std across mice
+        mean_across_mice = mouse_data.mean(axis=1)
+        std_across_mice = mouse_data.std(axis=1)
+
+        # Plot control block
+        ax.plot(mean_across_mice, label=f'{block_name} Control Mean', color='black', linestyle='--')
+        ax.fill_between(
+            mean_across_mice.index,
+            mean_across_mice - std_across_mice,
+            mean_across_mice + std_across_mice,
+            color='grey',
+            alpha=0.3,
+        )
+
+    ax.axvline(0, color='grey', linestyle='--')
+    ax.set_title(title)
+    ax.legend()
+    plt.tight_layout()
+
+
+def compute_trace_statistics(
+    data_dict,
+    trace="470_dfF_bsl",
+    co_traces=None,
+    ranges=None,
+):
+    """
+    Compute statistics for a main trace and optional co-traces, processing them simultaneously.
+
+    Parameters:
+    - data_dict: Nested dictionary with aligned data.
+    - trace: Main trace for statistical computation.
+    - co_traces: List of co-traces for computing mean values prior to the event.
+    - ranges: List of time ranges for which to compute statistics. Defaults to [-1, 0], [0, 1], [1, 2].
+
+    Returns:
+    - pd.DataFrame: DataFrame with computed statistics.
+    """
+    if ranges is None:
+        ranges = [(-1, 0), (0, 1), (1, 2)]  # Default time ranges
+
+    if co_traces is None:
+        co_traces = []  # Default to no co-traces
+
+    result_rows = []
+
+    for session, session_data in data_dict.items():
+        for block_type, block_data in session_data.items():
+            for mouse_id, mouse_data in block_data.items():
+                # Ensure the main trace exists
+                if trace not in mouse_data:
+                    continue
+
+                trace_chunks = mouse_data[trace]  # Main trace
+                
+                # Iterate through event columns
+                for event_time in trace_chunks.columns:
+                    row_base = {
+                        "session": session,
+                        "block_type": block_type,
+                        "mouse_id": mouse_id,
+                        "event_time": event_time,
+                    }
+
+                    # Compute statistics for co-traces in the [-1, 0] range
+                    for co_trace in co_traces:
+                        if co_trace in mouse_data:
+                            co_trace_chunks = mouse_data[co_trace]
+                            time_filtered_prior = co_trace_chunks.loc[-1:0, event_time]
+
+                            row_base[f"{co_trace}_prior"] = (
+                                time_filtered_prior.mean() if not time_filtered_prior.empty else np.nan
+                            )
+                        else:
+                            row_base[f"{co_trace}_prior"] = np.nan
+
+                    # Extract time ranges for the main trace
+                    for start, end in ranges:
+                        time_filtered = trace_chunks.loc[start:end, event_time]
+                        row = row_base.copy()
+
+                        if time_filtered.empty:
+                            row.update({
+                                f"time_range": f"{start}-{end}s",
+                                "valid_data": False,
+                                "peak": np.nan,
+                                "mean": np.nan,
+                                "median": np.nan,
+                                "stderr": np.nan,
+                            })
+                        else:
+                            # Compute statistics for the main trace
+                            row.update({
+                                f"time_range": f"{start}-{end}s",
+                                "valid_data": True,
+                                "peak": time_filtered.max(),
+                                "mean": time_filtered.mean(),
+                                "median": time_filtered.median(),
+                                "stderr": sem(time_filtered, nan_policy="omit"),
+                            })
+
+                        result_rows.append(row)
+
+    # Combine results into a single DataFrame
+    result_df = pd.DataFrame(result_rows)
+
+    # Ensure all co-trace columns are present even if missing
+    for co_trace in co_traces:
+        if f"{co_trace}_prior" not in result_df.columns:
+            result_df[f"{co_trace}_prior"] = np.nan
+
+    return result_df
