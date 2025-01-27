@@ -8,6 +8,11 @@ from datetime import timedelta
 from datetime import datetime
 import aeon.io.api as api
 import h5py
+<<<<<<< Updated upstream
+=======
+import os
+from scipy.signal import correlate
+>>>>>>> Stashed changes
 
 def resample_stream(data_stream_df, resampling_period='0.1ms', method='linear'):
     return data_stream_df.resample(resampling_period).last().interpolate(method=method)
@@ -341,6 +346,84 @@ def calculate_conversions_second_approach(data_path, photometry_path=None, verbo
 
     print(f'Calculation of conversions finished in {time() - start_time:.2f} seconds.')
 
+<<<<<<< Updated upstream
+=======
+    return output'''
+
+def read_OnixDigital(data_path, version=None):
+    """
+    Reads OnixDigital files from the specified path based on the detected or provided version.
+    """
+    if version is None:
+        # Automatically detect the version
+        filenames = os.listdir(data_path / 'OnixDigital')
+        if any('OnixDigital' in fname for fname in filenames):
+            version = "version1"
+        elif any('Clock' in fname for fname in filenames):
+            version = "version3"
+        else:
+            version = "version2"
+    
+    if version == "version1":
+        filenames = [x for x in os.listdir(data_path / 'OnixDigital') if x.startswith('OnixDigital')]
+        sorted_filenames = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in filenames])).sort_values()
+        dfs = [pd.read_csv(data_path / 'OnixDigital' / f"OnixDigital_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv") for row in sorted_filenames]
+        return pd.concat(dfs).reset_index(drop=True)
+
+    elif version == "version2":
+        onix_digital_reader = utils.TimestampedCsvReader(
+            "OnixDigital",
+            columns=["Clock", "HubClock", "DigitalInputs0", "DigitalInputs1", "DigitalInputs2", "DigitalInputs3", 
+                     "DigitalInputs4", "DigitalInputs5", "DigitalInputs6", "DigitalInputs7", "DigitalInputs8", "Buttons"]
+        )
+        return utils.load_2(onix_digital_reader, data_path)
+
+    elif version == "version3":
+        return pd.read_csv(data_path / 'OnixDigital' / 'onix_digital.csv', sep=';')  # Example path; adjust as needed.
+
+    else:
+        raise ValueError(f"Unsupported OnixDigital version: {version}")
+
+
+
+def calculate_conversions_second_approach(data_path, photometry_path=None, verbose=True):
+    output = {}
+    onix_digital = read_OnixDigital(data_path)
+    
+    # Synchronization logic
+    onix_digital_array = onix_digital["Value.Clock"].values
+    if photometry_path:
+        photometry_events = utils.read_fluorescence_events(photometry_path)
+        photometry_array = photometry_events['TimeStamp'].values
+
+        # Synchronization through cross-correlation
+        time_series_1 = np.diff(onix_digital_array)
+        time_series_2 = np.diff(photometry_array)
+        correlation = correlate(time_series_1, time_series_2, mode='full')
+        offset = np.argmax(correlation) - (len(time_series_2) - 1)
+
+        # Adjust offsets
+        if offset < 0:
+            photometry_array = photometry_array[abs(offset):]
+        elif offset > 0:
+            onix_digital_array = onix_digital_array[offset:]
+
+        # Align lengths
+        min_length = min(len(onix_digital_array), len(photometry_array))
+        onix_digital_array = onix_digital_array[:min_length]
+        photometry_array = photometry_array[:min_length]
+
+        # Conversion functions
+        m, b = np.polyfit(photometry_array, onix_digital_array, 1)
+        photometry_to_onix_time = lambda x: x * m + b
+        photometry_to_harp_time = lambda x: onix_to_harp_timestamp(photometry_to_onix_time(x))
+
+        output["photometry_to_harp_time"] = photometry_to_harp_time
+
+    if verbose:
+        print("Calculated conversions:", list(output.keys()))
+
+>>>>>>> Stashed changes
     return output
 
 def select_from_photodiode_data(OnixAnalogClock, OnixAnalogData, hard_start_time, harp_end_time, conversions):

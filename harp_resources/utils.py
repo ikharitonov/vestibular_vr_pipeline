@@ -8,6 +8,77 @@ from time import time
 from aeon.io.reader import Reader
 import h5py
 import json
+<<<<<<< Updated upstream
+=======
+from dotmap import DotMap
+import aeon.io.api as api
+
+class SessionData(Reader):
+    """Extracts metadata information from a settings .jsonl file."""
+
+    def __init__(self, pattern):
+        super().__init__(pattern, columns=["metadata"], extension="jsonl")
+
+    def read(self, file):
+        """Returns metadata for the specified epoch."""
+        with open(file) as fp:
+            metadata = [json.loads(line) for line in fp] 
+
+        data = {
+            "metadata": [DotMap(entry['value']) for entry in metadata]
+        }
+        timestamps = [api.aeon(entry['seconds']) for entry in metadata]
+
+        return pd.DataFrame(data, index=timestamps, columns=self.columns)
+
+
+class TimestampedCsvReader(Csv):
+    def __init__(self, pattern, columns):
+        super().__init__(pattern, columns, extension="csv")
+        self._rawcolumns = ["Time"] + columns
+
+    def read(self, file):
+        data = pd.read_csv(file, header=0, names=self._rawcolumns)
+        data["Seconds"] = data["Time"]
+        data["Time"] = data["Time"].transform(lambda x: api.aeon(x))
+        data.set_index("Time", inplace=True)
+        return data
+    
+
+class PhotometryReader(Csv):
+    def __init__(self, pattern):
+        #super().__init__(pattern, columns=["Time", "Events", "CH1-410", "CH1-470", "CH1-560", "U"], extension="csv")
+        super().__init__(pattern, columns=["TimeStamp", "470_dfF", "410_dfF", "56_dfF"], extension="csv")
+        self._rawcolumns = self.columns
+
+    def read(self, file):
+        data = pd.read_csv(file, header=1, names=self._rawcolumns)
+        data.set_index("Time", inplace=True)
+        return data
+    
+
+class Video(Csv):
+    def __init__(self, pattern):
+        super().__init__(pattern, columns = ["HardwareCounter", "HardwareTimestamp", "FrameIndex", "Path", "Epoch"], extension="csv")
+        self._rawcolumns = ["Time"] + self.columns[0:2]
+
+    def read(self, file):
+        data = pd.read_csv(file, header=0, names=self._rawcolumns)
+        data["FrameIndex"] = data.index
+        data["Path"] = os.path.splitext(file)[0] + ".avi"
+        data["Epoch"] = file.parts[-3]
+        data["Time"] = data["Time"].transform(lambda x: api.aeon(x))
+        data.set_index("Time", inplace=True)
+        return data
+
+
+def load_2(reader: Reader, root: Path) -> pd.DataFrame:
+    root = Path(root)
+    pattern = f"{root.joinpath(reader.pattern).joinpath(reader.pattern)}_*.{reader.extension}"
+    data = [reader.read(Path(file)) for file in glob(pattern)]
+    return pd.concat(data)
+
+>>>>>>> Stashed changes
 
 def load(reader: Reader, root: Path) -> pd.DataFrame:
     root = Path(root)
@@ -60,6 +131,7 @@ def read_ExperimentEvents(path):
         print('Reading failed:', e)
         return None
 
+<<<<<<< Updated upstream
 def read_OnixDigital(path):
     filenames = os.listdir(path/'OnixDigital')
     filenames = [x for x in filenames if x[:11]=='OnixDigital'] # filter out other (hidden) files
@@ -68,6 +140,42 @@ def read_OnixDigital(path):
     for row in sorted_filenames:
         read_dfs.append(pd.read_csv(path/'OnixDigital'/f"OnixDigital_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv"))
     return pd.concat(read_dfs).reset_index().drop(columns='index')
+=======
+# def read_OnixDigital(data_path, version=None):
+#     """
+#     Reads OnixDigital files from the specified path based on the detected or provided version.
+#     """
+#     if version is None:
+#         # Automatically detect the version
+#         filenames = os.listdir(data_path / 'OnixDigital')
+#         if any('OnixDigital' in fname for fname in filenames):
+#             version = "version1"
+#         elif any('Clock' in fname for fname in filenames):
+#             version = "version3"
+#         else:
+#             version = "version2"
+    
+#     if version == "version1":
+#         filenames = [x for x in os.listdir(data_path / 'OnixDigital') if x.startswith('OnixDigital')]
+#         sorted_filenames = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in filenames])).sort_values()
+#         dfs = [pd.read_csv(data_path / 'OnixDigital' / f"OnixDigital_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv") for row in sorted_filenames]
+#         return pd.concat(dfs).reset_index(drop=True)
+
+#     elif version == "version2":
+#         onix_digital_reader = utils.TimestampedCsvReader(
+#             "OnixDigital",
+#             columns=["Clock", "HubClock", "DigitalInputs0", "DigitalInputs1", "DigitalInputs2", "DigitalInputs3", 
+#                      "DigitalInputs4", "DigitalInputs5", "DigitalInputs6", "DigitalInputs7", "DigitalInputs8", "Buttons"]
+#         )
+#         return utils.load_2(onix_digital_reader, data_path)
+
+#     elif version == "version3":
+#         return pd.read_csv(data_path / 'OnixDigital' / 'onix_digital.csv', sep=';')  # Example path; adjust as needed.
+
+#     else:
+#         raise ValueError(f"Unsupported OnixDigital version: {version}")
+
+>>>>>>> Stashed changes
 
 def read_OnixAnalogFrameCount(path):
     filenames = os.listdir(path/'OnixAnalogFrameCount')
