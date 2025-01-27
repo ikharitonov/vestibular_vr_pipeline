@@ -12,6 +12,7 @@ from matplotlib.patches import Rectangle
 import os
 import sys
 from scipy.stats import sem
+import seaborn as sns
 
 # Add the root directory to the Python path
 project_root = os.path.abspath(os.path.join(os.getcwd(), "../"))
@@ -399,14 +400,23 @@ def filter_data(data, filters = []):
         'B3M8': ['mouseID', 'B3M8'],
         'halt': ['event', True],
         'not_halt': ['event', False],
+        'was_halt': ['halt', True],
+        'no_halt': ['halt', False],
         'day1': ['Session', 'day1'],
         'day2': ['Session', 'day1'],
+        'session 1': ['session', 'session 1'],
+        'session 2': ['session', 'session 2'],
         'MM': ['Experiment', 'MMclosed-open'],
         'MM_regular':['Experiment', 'MMclosed-and-Regular'],
         'open_block': ['LinearPlaybackMismatch_block', True],
         'closed_block': ['LinearMismatch_block', True],
         'regular_block': ['LinearRegularMismatch_block', True],
         'normal_block': ['LinearNormal_block', True],
+        '0-1s': ['time_range', '0-1s'],
+        '-1-2s': ['time_range', '-1-2s'],
+        '1-2s': ['time_range', '1-2s'],
+        'closedloop': ['block_type','closedloop'],
+        'openloop': ['block_type','openloop'],
     }
     filtered_df = data
     for filter in filters:
@@ -1065,3 +1075,104 @@ def compute_trace_statistics(
             result_df[f"{co_trace}_prior"] = np.nan
 
     return result_df
+
+
+
+def compare_statistics_grid(data, statistics, time_range):
+    """
+    Generate a grid of boxplots comparing the distribution of selected statistics 
+    for `halt=True` and `halt=False`.
+
+    Parameters:
+    - data (pd.DataFrame): The dataset containing statistics and halt information.
+    - statistics (list): List of statistics to compare (e.g., ['peak', 'mean', 'stderr']).
+    - time_range (str): The time range to filter data (e.g., '0-1s').
+    """
+    # Filter the data for the specified time range
+    filtered_data = data[data['time_range'] == time_range]
+    
+    if filtered_data.empty:
+        print(f"No data available for the time range: {time_range}")
+        return
+
+    # Create a grid of plots
+    num_stats = len(statistics)
+    cols = 3 if num_stats > 2 else 2
+    rows = (num_stats + cols - 1) // cols  # Compute rows based on number of plots and columns
+    fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 4 * rows))
+    axes = axes.flatten()
+
+    # Loop through each statistic and create a boxplot
+    for i, stat in enumerate(statistics):
+        sns.boxplot(
+            data=filtered_data, 
+            x='halt', 
+            y=stat, 
+            hue='halt', 
+            ax=axes[i], 
+            palette=['#FF9999', '#66B2FF'], 
+            dodge=False
+        )
+        axes[i].set_title(f'{stat.capitalize()} Comparison\n(Time Range: {time_range})', fontsize=14)
+        axes[i].set_xlabel('Halt', fontsize=12)
+        axes[i].set_ylabel(stat.capitalize(), fontsize=12)
+        axes[i].grid(axis='y', linestyle='--', alpha=0.7)
+        axes[i].get_legend().remove()  # Remove individual legends
+
+    # Remove unused subplots
+    for j in range(i + 1, len(axes)):
+        fig.delaxes(axes[j])
+
+    # Adjust layout
+    plt.tight_layout()
+    plt.show()
+    return fig, axes
+
+
+
+def compare_statistics_grid_sessions(data, statistics, time_range):
+    """
+    Create a grid of boxplots comparing the distributions of selected statistics
+    across `halt` conditions and sessions for a specific time range.
+    
+    Parameters:
+        data (pd.DataFrame): The dataset containing the statistics and group information.
+        statistics (list): List of statistics to compare (column names in `data`).
+        time_range (str): The specific time range to filter and analyze.
+    """
+    # Filter data for the selected time range
+    filtered_data = data[data['time_range'] == time_range]
+    
+    # Determine grid layout (3 columns per row as standard)
+    num_statistics = len(statistics)
+    num_cols = 3
+    num_rows = (num_statistics + num_cols - 1) // num_cols
+    
+    # Create the grid of subplots
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(num_cols * 5, num_rows * 5), constrained_layout=True)
+    axes = axes.flatten()  # Flatten to easily iterate over
+    
+    # Iterate through the statistics and create boxplots
+    for idx, stat in enumerate(statistics):
+        ax = axes[idx]
+        sns.boxplot(
+            data=filtered_data,
+            x='halt',
+            y=stat,
+            hue='session',
+            ax=ax,
+            palette='Set2'
+        )
+        
+        # Customize the plot
+        ax.set_title(f"Comparison of {stat} ({time_range})")
+        ax.set_xlabel("Halt Condition")
+        ax.set_ylabel(stat)
+        ax.legend(title="Session")
+    
+    # Remove unused subplots
+    for idx in range(len(statistics), len(axes)):
+        fig.delaxes(axes[idx])
+    
+    plt.show()
+    return fig, axes
