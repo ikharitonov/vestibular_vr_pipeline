@@ -265,7 +265,7 @@ def reformat_and_add_many_streams(streams, dataframe, source_name, stream_names,
     return streams
 
 
-'''def calculate_conversions_second_approach(data_path, photometry_path=None, verbose=True):
+def calculate_conversions_second_approach(data_path, photometry_path=None, verbose=True):
 
     start_time = time()
     output = {}
@@ -358,17 +358,18 @@ def reformat_and_add_many_streams(streams, dataframe, source_name, stream_names,
 
     print(f'Calculation of conversions finished in {time() - start_time:.2f} seconds.')
 
-    return output'''
+    return output
 
 def calculate_conversions_second_approach(data_path, photometry_path=None, verbose=True):
+    start_time = time()
     output = {}
     onix_digital = read_OnixDigital(data_path)
-    
+
     # Synchronization logic
-    onix_digital_array = onix_digital["Value.Clock"].values
+    onix_digital_array = onix_digital["Clock"].values
     if photometry_path:
         photometry_events = utils.read_fluorescence_events(photometry_path)
-        photometry_array = photometry_events['TimeStamp'].values
+        photometry_array = photometry_events.index.values # photometry_events['TimeStamp'].values
 
         # Synchronization through cross-correlation
         time_series_1 = np.diff(onix_digital_array)
