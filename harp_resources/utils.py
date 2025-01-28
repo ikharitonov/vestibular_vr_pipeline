@@ -139,87 +139,6 @@ def read_ExperimentEvents(path):
         return None
         
 
-def read_OnixDigital(data_path, version=None):
-    """
-    Reads OnixDigital files from the specified path based on the detected or provided version.
-    Ensures the returned DataFrame has a consistent structure across all versions.
-    """
-    data_path = Path(data_path)  # Ensure data_path is a Path object
-
-    if version is None:
-        # Automatically detect the version
-        filenames = os.listdir(data_path / 'OnixDigital')
-        if any('OnixDigital' in fname for fname in filenames):
-            version = "version1"
-            print('Detected Onix Digital version: 1')
-        elif any('Clock' in fname for fname in filenames):
-            version = "version3"
-            print('Detected Onix Digital version: 3')
-        else:
-            version = "version2"
-            print('Detected Onix Digital version: 2')
-
-    # Initialize an empty DataFrame for consistent structure
-    consistent_columns = ["Clock", "HubClock", "DigitalInputs", "Buttons"]
-    onix_digital_data = pd.DataFrame(columns=consistent_columns)
-
-    if version == "version1":
-        # Read version 1 OnixDigital CSV files
-        filenames = [x for x in os.listdir(data_path / 'OnixDigital') if x.startswith('OnixDigital')]
-        sorted_filenames = pd.to_datetime(
-            pd.Series([x.split('_')[1].split('.')[0] for x in filenames])
-        ).sort_values()
-
-        read_dfs = []
-        for row in sorted_filenames:
-            filepath = data_path / 'OnixDigital' / f"OnixDigital_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv"
-            df = pd.read_csv(filepath)
-            # Ensure consistent column names and format
-            df = df.rename(columns={"Value.Clock": "Clock", "Value.HubClock": "HubClock"})
-            df["DigitalInputs"] = df.filter(like="DigitalInputs").apply(lambda x: x.astype(str).sum(axis=1), axis=1)
-            df["Buttons"] = df.get("Buttons", pd.Series(index=df.index))  # Ensure Buttons column exists
-            read_dfs.append(df[consistent_columns])
-
-        onix_digital_data = pd.concat(read_dfs).reset_index(drop=True)
-
-    elif version == "version2":
-        # Read version 2 OnixDigital files using TimestampedCsvReader
-        onix_digital_reader = utils.TimestampedCsvReader(
-            pattern="OnixDigital",
-            columns=[
-                "Clock", "HubClock",
-                "DigitalInputs0", "DigitalInputs1", "DigitalInputs2",
-                "DigitalInputs3", "DigitalInputs4", "DigitalInputs5",
-                "DigitalInputs6", "DigitalInputs7", "DigitalInputs8",
-                "Buttons"
-            ]
-        )
-        raw_data = utils.load_2(onix_digital_reader, data_path)
-        # Combine all DigitalInputs columns into a single column
-        raw_data["DigitalInputs"] = raw_data.filter(like="DigitalInputs").apply(lambda x: x.astype(str).sum(axis=1), axis=1)
-        raw_data = raw_data[consistent_columns]
-        onix_digital_data = raw_data
-
-    elif version == "version3":
-        # Read version 3 OnixDigital files using a new reader
-        onix_digital_reader = utils.TimestampedCsvReader(
-            pattern="OnixDigital",
-            columns=["Clock", "HubClock", "DigitalInputs", "Buttons"]
-        )
-        raw_data = utils.load(onix_digital_reader, data_path / 'OnixDigital')
-        raw_data = raw_data[consistent_columns]  # Ensure the consistent column structure
-        onix_digital_data = raw_data
-
-    else:
-        raise ValueError(f"Unsupported OnixDigital version: {version}")
-
-    # Ensure consistent data types
-    onix_digital_data["Clock"] = pd.to_numeric(onix_digital_data["Clock"], errors="coerce")
-    onix_digital_data["HubClock"] = pd.to_numeric(onix_digital_data["HubClock"], errors="coerce")
-    onix_digital_data["Buttons"] = onix_digital_data["Buttons"].fillna(0).astype(int)
-
-    return onix_digital_data
-
 
 
 def read_OnixAnalogFrameCount(path):
@@ -341,6 +260,9 @@ def load_register_paths(dataset_path):
     print(f'H2: {list(h2_dict.keys())}')
     
     return h1_dict, h2_dict
+
+
+
 
 def load_registers(dataset_path):
 
