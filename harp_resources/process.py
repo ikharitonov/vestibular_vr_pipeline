@@ -297,8 +297,8 @@ def calculate_conversions_second_approach(data_path, photometry_path=None, verbo
         OnixDigital = utils.read_OnixDigital(data_path)
         PhotometryEvents = utils.read_fluorescence_events(photometry_path)
     
-        onix_digital_array = OnixDigital["Value.Clock"].values
-        photometry_events_array = PhotometryEvents['TimeStamp'].values
+        onix_digital_array = OnixDigital["Clock"].values
+        photometry_events_array = PhotometryEvents.index.values
     
         # Calculate time differences (to make the signals stationary for cross-correlation)
         time_series_1 = np.diff(onix_digital_array)
@@ -357,46 +357,6 @@ def calculate_conversions_second_approach(data_path, photometry_path=None, verbo
 
 
     print(f'Calculation of conversions finished in {time() - start_time:.2f} seconds.')
-
-    return output
-
-def calculate_conversions_second_approach(data_path, photometry_path=None, verbose=True):
-    start_time = time()
-    output = {}
-    onix_digital = read_OnixDigital(data_path)
-
-    # Synchronization logic
-    onix_digital_array = onix_digital["Clock"].values
-    if photometry_path:
-        photometry_events = utils.read_fluorescence_events(photometry_path)
-        photometry_array = photometry_events.index.values # photometry_events['TimeStamp'].values
-
-        # Synchronization through cross-correlation
-        time_series_1 = np.diff(onix_digital_array)
-        time_series_2 = np.diff(photometry_array)
-        correlation = correlate(time_series_1, time_series_2, mode='full')
-        offset = np.argmax(correlation) - (len(time_series_2) - 1)
-
-        # Adjust offsets
-        if offset < 0:
-            photometry_array = photometry_array[abs(offset):]
-        elif offset > 0:
-            onix_digital_array = onix_digital_array[offset:]
-
-        # Align lengths
-        min_length = min(len(onix_digital_array), len(photometry_array))
-        onix_digital_array = onix_digital_array[:min_length]
-        photometry_array = photometry_array[:min_length]
-
-        # Conversion functions
-        m, b = np.polyfit(photometry_array, onix_digital_array, 1)
-        photometry_to_onix_time = lambda x: x * m + b
-        photometry_to_harp_time = lambda x: onix_to_harp_timestamp(photometry_to_onix_time(x))
-
-        output["photometry_to_harp_time"] = photometry_to_harp_time
-
-    if verbose:
-        print("Calculated conversions:", list(output.keys()))
 
     return output
 

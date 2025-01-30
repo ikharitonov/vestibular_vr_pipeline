@@ -71,7 +71,7 @@ class Video(Csv):
 
 
 
-def load_2(reader: Reader, root: Path) -> pd.DataFrame:
+def load_vers2_3(reader: Reader, root: Path) -> pd.DataFrame:
     root = Path(root)
     pattern = f"{root.joinpath(reader.pattern).joinpath(reader.pattern)}_*.{reader.extension}"
     data = [reader.read(Path(file)) for file in glob(pattern)]
@@ -137,89 +137,57 @@ def read_ExperimentEvents(path):
     except Exception as e:
         print('Reading failed:', e)
         return None
-        
 
-def read_OnixDigital(data_path, version=None):
-    """
-    Reads OnixDigital files from the specified path based on the detected or provided version.
-    Ensures the returned DataFrame has a consistent structure across all versions.
-    """
-    data_path = Path(data_path)  # Ensure data_path is a Path object
 
+def read_OnixDigital(path, version=None):
+    filenames = os.listdir(path/'OnixDigital')
+    filenames = [x for x in filenames if x[:11]=='OnixDigital'] # filter out other (hidden) files
+    sorted_filenames = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in filenames])).sort_values()
+    read_dfs = []
+
+    #Attempt to detect file version
     if version is None:
-        # Automatically detect the version
-        filenames = os.listdir(data_path / 'OnixDigital')
         if any('OnixDigital' in fname for fname in filenames):
             version = "version1"
-            print('Detected Onix Digital version: 1')
+            print('Detected: First Onix Digital version')
         elif any('Clock' in fname for fname in filenames):
             version = "version3"
-            print('Detected Onix Digital version: 3')
+            print('Detected: New Onix Digital version')
         else:
             version = "version2"
-            print('Detected Onix Digital version: 2')
+            print('Detected: Second Onix Digital version')
+    
+    for row in sorted_filenames: 
+        #Reading the data into csv:
+        #Version 1 and 2
+        if version == 'version1':
+            data = pd.read_csv(path/'OnixDigital'/f"OnixDigital_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv")
+            
+        f version == 'version2':
+            onix_digital_reader = utils.TimestampedCsvReader("OnixDigital", columns=["Clock", "HubClock", 
+                                                                         "DigitalInputs0",
+                                                                         "DigitalInputs1",
+                                                                         "DigitalInputs2",
+                                                                         "DigitalInputs3",
+                                                                         "DigitalInputs4",
+                                                                         "DigitalInputs5"
+                                                                         "DigitalInputs6",
+                                                                         "DigitalInputs7",
+                                                                         "DigitalInputs8",
+                                                                         "Buttons"])
+            onix_harp_reader = utils.TimestampedCsvReader("OnixHarp", columns=["Clock", "HubClock", "HarpTime"])
+            
+            data = utils.load_vers2_3(onix_digital_reader, path)
+        
+        if version == 'version3':
+            onix_digital_reader = utils.TimestampedCsvReader("OnixDigital", columns=["Clock", "HubClock", "DigitalInputs", "Buttons"])
+            data = load_vers2_3(onix_digital_reader, path) # Ensure load_vers2_3 can take this path type Path()
 
-    # Initialize an empty DataFrame for consistent structure
-    consistent_columns = ["Clock", "HubClock", "DigitalInputs", "Buttons"]
-    onix_digital_data = pd.DataFrame(columns=consistent_columns)
+        #appending all dfs to a list
+        read_dfs.append(data)
 
-    if version == "version1":
-        # Read version 1 OnixDigital CSV files
-        filenames = [x for x in os.listdir(data_path / 'OnixDigital') if x.startswith('OnixDigital')]
-        sorted_filenames = pd.to_datetime(
-            pd.Series([x.split('_')[1].split('.')[0] for x in filenames])
-        ).sort_values()
-
-        read_dfs = []
-        for row in sorted_filenames:
-            filepath = data_path / 'OnixDigital' / f"OnixDigital_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv"
-            df = pd.read_csv(filepath)
-            # Ensure consistent column names and format
-            df = df.rename(columns={"Value.Clock": "Clock", "Value.HubClock": "HubClock"})
-            df["DigitalInputs"] = df.filter(like="DigitalInputs").apply(lambda x: x.astype(str).sum(axis=1), axis=1)
-            df["Buttons"] = df.get("Buttons", pd.Series(index=df.index))  # Ensure Buttons column exists
-            read_dfs.append(df[consistent_columns])
-
-        onix_digital_data = pd.concat(read_dfs).reset_index(drop=True)
-
-    elif version == "version2":
-        # Read version 2 OnixDigital files using TimestampedCsvReader
-        onix_digital_reader = utils.TimestampedCsvReader(
-            pattern="OnixDigital",
-            columns=[
-                "Clock", "HubClock",
-                "DigitalInputs0", "DigitalInputs1", "DigitalInputs2",
-                "DigitalInputs3", "DigitalInputs4", "DigitalInputs5",
-                "DigitalInputs6", "DigitalInputs7", "DigitalInputs8",
-                "Buttons"
-            ]
-        )
-        raw_data = utils.load_2(onix_digital_reader, data_path)
-        # Combine all DigitalInputs columns into a single column
-        raw_data["DigitalInputs"] = raw_data.filter(like="DigitalInputs").apply(lambda x: x.astype(str).sum(axis=1), axis=1)
-        raw_data = raw_data[consistent_columns]
-        onix_digital_data = raw_data
-
-    elif version == "version3":
-        # Read version 3 OnixDigital files using a new reader
-        onix_digital_reader = utils.TimestampedCsvReader(
-            pattern="OnixDigital",
-            columns=["Clock", "HubClock", "DigitalInputs", "Buttons"]
-        )
-        raw_data = utils.load(onix_digital_reader, data_path / 'OnixDigital')
-        raw_data = raw_data[consistent_columns]  # Ensure the consistent column structure
-        onix_digital_data = raw_data
-
-    else:
-        raise ValueError(f"Unsupported OnixDigital version: {version}")
-
-    # Ensure consistent data types
-    onix_digital_data["Clock"] = pd.to_numeric(onix_digital_data["Clock"], errors="coerce")
-    onix_digital_data["HubClock"] = pd.to_numeric(onix_digital_data["HubClock"], errors="coerce")
-    onix_digital_data["Buttons"] = onix_digital_data["Buttons"].fillna(0).astype(int)
-
-    return onix_digital_data
-
+    
+    return pd.concat(read_dfs).reset_index().drop(columns='index')
 
 
 def read_OnixAnalogFrameCount(path):
