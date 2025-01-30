@@ -294,7 +294,7 @@ def calculate_conversions_second_approach(data_path, photometry_path=None, verbo
     output["harp_to_onix_clock"] = harp_to_onix_clock
 
     if photometry_path:
-        OnixDigital = utils.read_OnixDigital(data_path)
+        OnixDigital = utils.read_OnixDigital(data_path, version=None)
         PhotometryEvents = utils.read_fluorescence_events(photometry_path)
     
         onix_digital_array = OnixDigital["Clock"].values

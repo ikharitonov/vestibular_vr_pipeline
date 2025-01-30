@@ -1,14 +1,16 @@
-import harp
-import numpy as np
-import pandas as pd
+import os
+import json
+import time
 from glob import glob
 from pathlib import Path
-import os
-from time import time
-from aeon.io.reader import Reader, Csv, Harp
+
+import numpy as np
+import pandas as pd
 import h5py
-import json
 from dotmap import DotMap
+
+import harp
+from aeon.io.reader import Reader, Csv, Harp
 import aeon.io.api as api
 
 class SessionData(Reader):
@@ -140,6 +142,9 @@ def read_ExperimentEvents(path):
 
 
 def read_OnixDigital(path, version=None):
+    # version refers to how they were saved: 1 means Cohort 0, 2 means Cohort 1 and 3 means Cohort 2 onwards
+    # but automatic version may work, that would be ideal 
+    
     filenames = os.listdir(path/'OnixDigital')
     filenames = [x for x in filenames if x[:11]=='OnixDigital'] # filter out other (hidden) files
     sorted_filenames = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in filenames])).sort_values()
@@ -163,7 +168,7 @@ def read_OnixDigital(path, version=None):
         if version == 'version1':
             data = pd.read_csv(path/'OnixDigital'/f"OnixDigital_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv")
             
-        f version == 'version2':
+        if version == 'version2':
             onix_digital_reader = utils.TimestampedCsvReader("OnixDigital", columns=["Clock", "HubClock", 
                                                                          "DigitalInputs0",
                                                                          "DigitalInputs1",
