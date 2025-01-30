@@ -1,0 +1,12 @@
+# Automatically normalize line endings
+* text=auto
+
+# Force LF for specific file types
+*.sh text eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+
+# Force CRLF for Windows-specific files
+*.bat text eol=crlf
+*.cmd text eol=crlf
