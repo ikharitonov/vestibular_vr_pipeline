@@ -1,22 +1,47 @@
-.ipynb_checkpoints
-.pyc
-<<<<<<< Updated upstream
-=======
-2_DEMO_perievent_raw_streams_grab.ipynb
-2_DEMO_perievent_raw_streams_grab.ipynb
-2_DEMO_perievent_raw_streams_grab.ipynb
-2_DEMO_perievent_raw_streams_grab.ipynb
-harp_resources/__pycache__/utils.cpython-312.pyc
-GRAB_MMclosed_open_session1.csv
-harp_resources/process.py
-harp_resources/process.py
-harp_resources/process.py
-*.csv
-*.pyc
-*.pyc
-harp_resources/process.py
-harp_resources/process.py
-*.pyc
-*.png
-1_DEMO_data_extraction_pipeline.ipynb
->>>>>>> Stashed changes
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.Trashes
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.cache/
+
+# Editors and IDEs
+.vscode/
+.idea/
+*.code-workspace
+*.swp
+*.swo
+*.un~
+
+# Python
+*.py[cod]
+__pycache__/
+env/
+venv/
+
+# Node.js
+node_modules/
+npm-debug.log*
+
+# Build Artifacts
+*.o
+*.so
+*.dll
+*.exe
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+.local/share/jupyter/runtime/
+.jupyter/
+
+# Jupyter output management (optional, use nbstripout for cleaner commits)
+# *.ipynb is NOT ignored, as it contains critical notebook data.
