@@ -9,3 +9,5 @@
 # Ensure Windows-specific files use CRLF
 *.bat text eol=crlf
 
+#enforce stripping of notebooks 
+*.ipynb filter=nbstripout
