@@ -71,7 +71,7 @@ class Video(Csv):
 
 
 
-def load_2(reader: Reader, root: Path) -> pd.DataFrame:
+def load_2(reader: Reader, root: Path) -> pd.DataFrame: #reads multiple files matching a pattern and concatenates their contents into a single DataFrame.
     root = Path(root)
     pattern = f"{root.joinpath(reader.pattern).joinpath(reader.pattern)}_*.{reader.extension}"
     data = [reader.read(Path(file)) for file in glob(pattern)]
@@ -88,7 +88,6 @@ def load(reader: Reader, root: Path) -> pd.DataFrame:
 def load_harp(reader: Harp, root: Path) -> pd.DataFrame:
     root = Path(root)
     pattern = f"{root.joinpath(root.name)}_{reader.register.address}_*.bin"
-    print(pattern)
     data = [reader.read(file) for file in glob(pattern)]
     return pd.concat(data)
 
@@ -261,9 +260,9 @@ def load_register_paths(dataset_path):
     h2_files = [f for f in h2_files if f.split('_')[0] == 'HarpDataH2']
     h2_dict = {int(filename.split('_')[1]):h2_folder/filename for filename in h2_files}
     
-    print(f'Dataset {dataset_path.name} contains following registers:')
-    print(f'H1: {list(h1_dict.keys())}')
-    print(f'H2: {list(h2_dict.keys())}')
+    #print(f'Dataset {dataset_path.name} contains following registers:')
+    #print(f'H1: {list(h1_dict.keys())}')
+    #print(f'H2: {list(h2_dict.keys())}')
     
     return h1_dict, h2_dict
 
