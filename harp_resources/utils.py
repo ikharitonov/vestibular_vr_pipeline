@@ -43,7 +43,7 @@ class TimestampedCsvReader(Csv):
         return data
     
 
-class PhotometryReader(Csv):
+class PhotometryReader(Csv):#FIXME Not used? 
     def __init__(self, pattern):
         #super().__init__(pattern, columns=["Time", "Events", "CH1-410", "CH1-470", "CH1-560", "U"], extension="csv")
         super().__init__(pattern, columns=["TimeStamp", "470_dfF", "410_dfF", "56_dfF"], extension="csv")
@@ -78,7 +78,7 @@ def load_2(reader: Reader, root: Path) -> pd.DataFrame: #reads multiple files ma
     return pd.concat(data)
 
 
-def load(reader: Reader, root: Path) -> pd.DataFrame:
+def load(reader: Reader, root: Path) -> pd.DataFrame: #FIXME this is likely superseeded by load_2 and deprecated 
     root = Path(root)
     pattern = f"{root.joinpath(root.name)}_{reader.register.address}_*.bin"
     data = [reader.read(file) for file in glob(pattern)]
@@ -117,6 +117,69 @@ def get_register_object(register_number, harp_board='h1'):
         }
     }
     return reference_dict[harp_board][register_number]
+
+def load_register_paths(dataset_path):
+    
+    if not os.path.exists(dataset_path/'HarpDataH1') or not os.path.exists(dataset_path/'HarpDataH2'):
+        raise FileNotFoundError(f"'HarpDataH1' or 'HarpDataH2' folder was not found in {dataset_path}.")
+    h1_folder = dataset_path/'HarpDataH1'
+    h2_folder = dataset_path/'HarpDataH2'
+    
+    h1_files = os.listdir(h1_folder)
+    h1_files = [f for f in h1_files if f.split('_')[0] == 'HarpDataH1']
+    h1_dict = {int(filename.split('_')[1]):h1_folder/filename for filename in h1_files}
+    
+    h2_files = os.listdir(h2_folder)
+    h2_files = [f for f in h2_files if f.split('_')[0] == 'HarpDataH2']
+    h2_dict = {int(filename.split('_')[1]):h2_folder/filename for filename in h2_files}
+    
+    #print(f'Dataset {dataset_path.name} contains following registers:')
+    #print(f'H1: {list(h1_dict.keys())}')
+    #print(f'H2: {list(h2_dict.keys())}')
+    
+    return h1_dict, h2_dict
+
+def load_registers(dataset_path):
+    
+    h1_dict, h2_dict = load_register_paths(dataset_path)
+    
+    h1_data_streams = {}
+    for register in h1_dict.keys():
+        data_stream = load(get_register_object(register, 'h1'), dataset_path/'HarpDataH1')
+        if data_stream.columns.shape[0] > 1:
+            for col_name in data_stream.columns:
+                h1_data_streams[f'{col_name}({register})'] = data_stream[col_name]
+        elif data_stream.columns.shape[0] == 1:
+            h1_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream
+        else:
+            raise ValueError(f"Loaded data stream does not contain supported number of columns in Pandas DataFrame. Dataframe columns shape = {data_stream.columns.shape}")
+            
+    h2_data_streams = {}
+    for register in h2_dict.keys():
+        data_stream = load(get_register_object(register, 'h2'), dataset_path/'HarpDataH2')
+        if data_stream.columns.shape[0] > 1:
+            for col_name in data_stream.columns:
+                h2_data_streams[f'{col_name}({register})'] = data_stream[col_name]
+        elif data_stream.columns.shape[0] == 1:
+            h2_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream[data_stream.columns[0]]
+        else:
+            raise ValueError(f"Loaded data stream does not contain supported number of columns in Pandas DataFrame. Dataframe columns shape = {data_stream.columns.shape}")
+    
+    # Converting any pd.DataFrames present (assumed to be single column DataFrames) into pd.Series
+    for stream_name, stream in h1_data_streams.items():
+        if type(stream) == pd.DataFrame:
+            try:
+                h1_data_streams[stream_name] = pd.Series(data=stream.values.squeeze(), index=stream.index)
+            except:
+                print(f'ERROR: Attempted to convert the loaded register "{stream_name}" to pandas.Series common format, but failed. Likely cause is that it has more than a single column.')
+    for stream_name, stream in h2_data_streams.items():
+        if type(stream) == pd.DataFrame:
+            try:
+                h1_data_streams[stream_name] = pd.Series(data=stream.values.squeeze(), index=stream.index)
+            except:
+                print(f'ERROR: Attempted to convert the loaded register "{stream_name}" to pandas.Series common format, but failed. Likely cause is that it has more than a single column.')
+    
+    return {'H1': h1_data_streams, 'H2': h2_data_streams}
 
 def read_ExperimentEvents(path):
     filenames = os.listdir(path/'ExperimentEvents')
@@ -232,85 +295,18 @@ def read_SessionSettings(dataset_path, print_contents=False):
 
     return data
 
-def read_fluorescence(photometry_data_path):
-    try:
-        Fluorescence = pd.read_csv(photometry_data_path/'Processed_Fluorescence.csv', skiprows=0, index_col=False)
-    except FileNotFoundError:
-        Fluorescence = pd.read_csv(photometry_data_path/'Fluorescence.csv', skiprows=1, index_col=False)
+# def read_fluorescence(photometry_data_path): #FIXME needed?
+#     try:
+#         Fluorescence = pd.read_csv(photometry_data_path/'Processed_Fluorescence.csv', skiprows=0, index_col=False)
+#     except FileNotFoundError:
+#         Fluorescence = pd.read_csv(photometry_data_path/'Fluorescence.csv', skiprows=1, index_col=False)
         
-    if 'Unnamed: 5' in Fluorescence.columns: Fluorescence = Fluorescence.drop(columns='Unnamed: 5')
-    return Fluorescence
+#     if 'Unnamed: 5' in Fluorescence.columns: Fluorescence = Fluorescence.drop(columns='Unnamed: 5')
+#     return Fluorescence
 
-def read_fluorescence_events(photometry_data_path):
-    Events = pd.read_csv(photometry_data_path/'Events.csv', skiprows=0, index_col=False)
-    return Events
-
-def load_register_paths(dataset_path):
-    
-    if not os.path.exists(dataset_path/'HarpDataH1') or not os.path.exists(dataset_path/'HarpDataH2'):
-        raise FileNotFoundError(f"'HarpDataH1' or 'HarpDataH2' folder was not found in {dataset_path}.")
-    h1_folder = dataset_path/'HarpDataH1'
-    h2_folder = dataset_path/'HarpDataH2'
-    
-    h1_files = os.listdir(h1_folder)
-    h1_files = [f for f in h1_files if f.split('_')[0] == 'HarpDataH1']
-    h1_dict = {int(filename.split('_')[1]):h1_folder/filename for filename in h1_files}
-    
-    h2_files = os.listdir(h2_folder)
-    h2_files = [f for f in h2_files if f.split('_')[0] == 'HarpDataH2']
-    h2_dict = {int(filename.split('_')[1]):h2_folder/filename for filename in h2_files}
-    
-    #print(f'Dataset {dataset_path.name} contains following registers:')
-    #print(f'H1: {list(h1_dict.keys())}')
-    #print(f'H2: {list(h2_dict.keys())}')
-    
-    return h1_dict, h2_dict
-
-def load_registers(dataset_path):
-
-    start_time = time()
-    
-    h1_dict, h2_dict = load_register_paths(dataset_path)
-    
-    h1_data_streams = {}
-    for register in h1_dict.keys():
-        data_stream = load(get_register_object(register, 'h1'), dataset_path/'HarpDataH1')
-        if data_stream.columns.shape[0] > 1:
-            for col_name in data_stream.columns:
-                h1_data_streams[f'{col_name}({register})'] = data_stream[col_name]
-        elif data_stream.columns.shape[0] == 1:
-            h1_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream
-        else:
-            raise ValueError(f"Loaded data stream does not contain supported number of columns in Pandas DataFrame. Dataframe columns shape = {data_stream.columns.shape}")
-            
-    h2_data_streams = {}
-    for register in h2_dict.keys():
-        data_stream = load(get_register_object(register, 'h2'), dataset_path/'HarpDataH2')
-        if data_stream.columns.shape[0] > 1:
-            for col_name in data_stream.columns:
-                h2_data_streams[f'{col_name}({register})'] = data_stream[col_name]
-        elif data_stream.columns.shape[0] == 1:
-            h2_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream[data_stream.columns[0]]
-        else:
-            raise ValueError(f"Loaded data stream does not contain supported number of columns in Pandas DataFrame. Dataframe columns shape = {data_stream.columns.shape}")
-    
-    # Converting any pd.DataFrames present (assumed to be single column DataFrames) into pd.Series
-    for stream_name, stream in h1_data_streams.items():
-        if type(stream) == pd.DataFrame:
-            try:
-                h1_data_streams[stream_name] = pd.Series(data=stream.values.squeeze(), index=stream.index)
-            except:
-                print(f'ERROR: Attempted to convert the loaded register "{stream_name}" to pandas.Series common format, but failed. Likely cause is that it has more than a single column.')
-    for stream_name, stream in h2_data_streams.items():
-        if type(stream) == pd.DataFrame:
-            try:
-                h1_data_streams[stream_name] = pd.Series(data=stream.values.squeeze(), index=stream.index)
-            except:
-                print(f'ERROR: Attempted to convert the loaded register "{stream_name}" to pandas.Series common format, but failed. Likely cause is that it has more than a single column.')
- 
-    print(f'Registers loaded in {time() - start_time:.2f} seconds.')
-    
-    return {'H1': h1_data_streams, 'H2': h2_data_streams}
+# def read_fluorescence_events(photometry_data_path): #FIXME needed?
+#     Events = pd.read_csv(photometry_data_path/'Events.csv', skiprows=0, index_col=False)
+#     return Events
 
 def load_streams_from_h5(data_path):
     # File path to read the HDF5 file
