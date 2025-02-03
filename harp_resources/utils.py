@@ -13,13 +13,16 @@ import harp
 from aeon.io.reader import Reader, Csv, Harp
 import aeon.io.api as api
 
+#FIXME list
+# very verbose, e.r. printing which dataset is loaded many times, giving how long it took (find and remove these time.time())
+
 class SessionData(Reader):
     """Extracts metadata information from a settings .jsonl file."""
 
     def __init__(self, pattern):
         super().__init__(pattern, columns=["metadata"], extension="jsonl")
 
-    def read(self, file):
+    def read(self, file, print_contents=True):
         """Returns metadata for the specified epoch."""
         with open(file) as fp:
             metadata = [json.loads(line) for line in fp] 
@@ -30,6 +33,9 @@ class SessionData(Reader):
         timestamps = [api.aeon(entry['seconds']) for entry in metadata]
 
         return pd.DataFrame(data, index=timestamps, columns=self.columns)
+        # Pretty print if needed
+        if print_contents:
+            print(json.dumps(data, indent=4))
 
 
 class TimestampedCsvReader(Csv):
@@ -70,7 +76,6 @@ class Video(Csv):
         data["Time"] = data["Time"].transform(lambda x: api.aeon(x))
         data.set_index("Time", inplace=True)
         return data
-
 
 
 def load_vers2_3(reader: Reader, root: Path) -> pd.DataFrame:
@@ -169,7 +174,7 @@ def read_OnixDigital(path, version=None):
             data = pd.read_csv(path/'OnixDigital'/f"OnixDigital_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv")
             
         if version == 'version2':
-            onix_digital_reader = utils.TimestampedCsvReader("OnixDigital", columns=["Clock", "HubClock", 
+            onix_digital_reader = utils.TimestampedCsvReader("OnixDigital", columns=["Clock", "HubClock", #FIXME we are inside utiils, so probably not needed, this is an error by copying from notebook?
                                                                          "DigitalInputs0",
                                                                          "DigitalInputs1",
                                                                          "DigitalInputs2",
@@ -207,7 +212,7 @@ def read_OnixAnalogFrameCount(path):
 def read_OnixAnalogData(dataset_path, binarise=False):
     # https://github.com/neurogears/vestibular-vr/blob/benchmark-analysis/Python/vestibular-vr/analysis/round_trip.py
     # https://open-ephys.github.io/onix-docs/Software%20Guide/Bonsai.ONIX/Nodes/AnalogIODevice.html
-    start_time = time()
+    start_time = time.time()
     arrays_to_concatenate = []
     files_to_read = [x for x in os.listdir(dataset_path/'OnixAnalogData')]
     
@@ -236,12 +241,12 @@ def read_OnixAnalogData(dataset_path, binarise=False):
         photo_diode[np.where(photo_diode > PHOTODIODE_THRESHOLD)] = 1
         photo_diode = photo_diode.astype(bool)
 
-    print(f'OnixAnalogData loaded in {time() - start_time:.2f} seconds.')
+    print(f'OnixAnalogData loaded in {time.time() - start_time:.2f} seconds.')
 
     return photo_diode
 
 def read_OnixAnalogClock(dataset_path):
-    start_time = time()
+    start_time = time.time()
     arrays_to_concatenate = []
     files_to_read = [x for x in os.listdir(dataset_path/'OnixAnalogClock')]
     
@@ -258,26 +263,39 @@ def read_OnixAnalogClock(dataset_path):
     
     output = np.concatenate(arrays_to_concatenate)
 
-    print(f'OnixAnalogClock loaded in {time() - start_time:.2f} seconds.')
+    print(f'OnixAnalogClock loaded in {time.time() - start_time:.2f} seconds.')
 
     return output
 
+
 def read_SessionSettings(dataset_path, print_contents=False):
-    
-    # File path to the jsonl file
     path = Path(dataset_path)
-    jsonl_file_path = dataset_path/'SessionSettings'/os.listdir(dataset_path/'SessionSettings')[0]
+    session_settings_path = path / 'SessionSettings'
+    
+    # List and filter only JSONL files
+    jsonl_files = [f for f in os.listdir(session_settings_path) if f.endswith('.jsonl')]
+    
+    if not jsonl_files:
+        raise FileNotFoundError(f"No .jsonl files found in {session_settings_path}")
+
+    jsonl_file_path = session_settings_path / jsonl_files[0]  # Pick the first valid .jsonl file, there should be only one!
 
     # Open and read the jsonl file line by line
-    with open(jsonl_file_path, 'r') as file:
+    with open(jsonl_file_path, 'r', encoding="utf-8") as file:
         for line in file:
-            # Parse each line as JSON
-            data = json.loads(line)
-            
-            # Pretty print the data with correct indentation
-            pretty_data = json.dumps(data, indent=4)
+            line = line.strip()  # Remove whitespace/newlines
+            if not line: 
+                continue  # Skip empty lines
 
-    if print_contents: print(pretty_data)
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError as e:
+                print(f"Skipping malformed JSON line: {line[:100]}... Error: {e}")
+                continue
+            
+            # Pretty print if needed
+            if print_contents:
+                print(json.dumps(data, indent=4))
 
     return data
 
@@ -317,7 +335,7 @@ def load_register_paths(dataset_path):
 
 def load_registers(dataset_path):
 
-    start_time = time()
+    start_time = time.time()  # Use time.time() instead of time()
     
     h1_dict, h2_dict = load_register_paths(dataset_path)
     
@@ -357,7 +375,7 @@ def load_registers(dataset_path):
             except:
                 print(f'ERROR: Attempted to convert the loaded register "{stream_name}" to pandas.Series common format, but failed. Likely cause is that it has more than a single column.')
  
-    print(f'Registers loaded in {time() - start_time:.2f} seconds.')
+    print(f'Registers loaded in {time.time() - start_time:.2f} seconds.')
     
     return {'H1': h1_data_streams, 'H2': h2_data_streams}
 
