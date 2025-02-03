@@ -693,7 +693,59 @@ class preprocess:
         
     #     print(f'info added for {self.mousename }\n')
     #     return info_columns
-
+    
+    def cross_correlate_signals(self, col1='470', col2='560', plot = False):
+        """Cross-correlate specified signals, find absolute peak in ±5s window, and plot the result."""
+        # Validate inputs
+        valid_columns = ['470', '560', '410']
+        if col1 not in valid_columns or col2 not in valid_columns:
+            raise ValueError(f"Invalid columns. Valid options are: {valid_columns}")
+        
+        # Extract signals
+        z_col1 = self.zscored[f'z_{col1}']
+        z_col2 = self.zscored[f'z_{col2}']
+        
+        # Compute cross-correlation
+        cross_corr = np.correlate(z_col1 - np.mean(z_col1), z_col2 - np.mean(z_col2), mode='full')
+        lags = np.arange(-len(z_col1) + 1, len(z_col1))
+        
+        # Define ±5 second window
+        sampling_rate = 1 / np.mean(np.diff(self.data_seconds['TimeStamp']))
+        window_size = int(5 * sampling_rate)
+        center = len(cross_corr) // 2
+        window = cross_corr[center - window_size:center + window_size + 1]
+        window_lags = lags[center - window_size:center + window_size + 1] / sampling_rate  # Convert to seconds
+        
+        # Find absolute peak in the window
+        peak_idx = np.argmax(np.abs(window))
+        peak_value = window[peak_idx]
+        peak_lag = window_lags[peak_idx]
+        if plot: 
+            # Plot cross-correlation
+            plt.figure(figsize=(10, 5))
+            plt.plot(window_lags, window, label='Cross-correlation')
+            plt.axvline(x=peak_lag, color='r', linestyle='--', label=f'Peak at {peak_lag:.2f}s')
+            plt.scatter([peak_lag], [peak_value], color='r')
+            plt.title(f'Cross-correlation between z_{col1} and z_{col2}')
+            plt.xlabel('Lag (s)')
+            plt.ylabel('Cross-correlation')
+            plt.legend()
+            plt.grid()
+            plt.show()
+        
+        # Add to self.info
+        if 'cross_correlation' not in self.info:
+            self.info['cross_correlation'] = {}
+        self.info['cross_correlation'][f'{col1}_{col2}'] = {
+            'peak_value': peak_value,
+            'peak_lag': peak_lag,
+            'columns': (col1, col2)
+        }
+        # Report peak value
+        peak_value = round(window[peak_idx], 2)
+        peak_lag = round(window_lags[peak_idx], 2)
+        print(f'Peak cross-correlation value: {peak_value} at lag: {peak_lag:.2f}s')
+    
 
     def write_preprocessed_csv(self, Onix_align = True):
         """
@@ -735,6 +787,62 @@ class preprocess:
         mpl.pyplot.close()
         
         
+    # def plot_all_signals(self):
+    #     """Generate comprehensive figure of signal processing steps on A4 page"""
+    #     # A4 dimensions and setup
+    #     A4_WIDTH = 8.27
+    #     A4_HEIGHT = 11.69
+    #     SMALL_SIZE = 6
+    #     MEDIUM_SIZE = 8
+        
+    #     plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
+    #     plt.rc('axes', titlesize=MEDIUM_SIZE)    # fontsize of the axes title
+    #     plt.rc('axes', labelsize=SMALL_SIZE)     # fontsize of the x and y labels
+    #     plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
+        
+    #     n_signals = len(self.signals.columns)
+    #     n_rows = n_signals * 3
+        
+    #     # Create figure
+    #     fig = plt.figure(figsize=(A4_WIDTH, A4_HEIGHT))
+    #     gs = fig.add_gridspec(n_rows, 1, hspace=0.5)
+        
+    #     for idx, signal in enumerate(self.signals.columns):
+    #         # 1. Exponential fit
+    #         ax1 = fig.add_subplot(gs[idx*3])
+    #         ax1.plot(self.data_seconds['TimeStamp'], self.filtered[f'filtered_{signal}'],
+    #                 color=self.colors[idx], alpha=1, label=f'Filtered {signal}', linewidth=0.5)
+    #         ax1.plot(self.data_seconds['TimeStamp'], self.exp_fits[f'expfit_{signal[-3:]}'],
+    #                 color='black', alpha=1, label='Exponential fit', linewidth=1)
+    #         ax1.set_title(f'Exponential Fit - {signal}')
+    #         ax1.legend(loc='upper right')
+            
+    #         # 2. dF/F signal
+    #         ax2 = fig.add_subplot(gs[idx*3 + 1])
+    #         ax2.plot(self.data_seconds['TimeStamp'], self.deltaF_F[f'{signal[-3:]}_dfF'],
+    #                 color=self.colors[idx], linewidth=0.2)
+    #         ax2.set_title(f'ΔF/F Signal - {signal}')
+            
+    #         # 3. Z-scored signal
+    #         ax3 = fig.add_subplot(gs[idx*3 + 2])
+    #         ax3.plot(self.data_seconds['TimeStamp'], self.zscored[f'z_{signal[-3:]}'],
+    #                 color=self.colors[idx], linewidth=0.2)
+    #         ax3.set_title(f'Z-scored Signal - {signal}')
+        
+    #     # Final formatting
+    #     plt.xlabel('Time (s)')
+    #     filter_method = self.info['filtering_method'][signal]
+    #     detrend_method = self.info['detrend_method']
+    #     fig.suptitle(f'Signal Processing Steps - {self.mousename}\nFiltering: {filter_method}, Detrending: {detrend_method}', 
+    #                 y=0.95, fontsize=MEDIUM_SIZE)
+    #     plt.tight_layout()
+        
+    #     # Save figures in multiple formats
+    #     base_path = f'{self.save_path}/all_signals_{self.mousename}'
+    #     plt.savefig(f'{base_path}.png', bbox_inches='tight', dpi=300)
+    #     plt.savefig(f'{base_path}.eps', bbox_inches='tight', format='eps')
+    #     plt.close()
+    
     def plot_all_signals(self):
         """Generate comprehensive figure of signal processing steps on A4 page"""
         # A4 dimensions and setup
@@ -749,7 +857,7 @@ class preprocess:
         plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
         
         n_signals = len(self.signals.columns)
-        n_rows = n_signals * 3
+        n_rows = n_signals * 3 + 1  # Add one row for the cross-correlation plot
         
         # Create figure
         fig = plt.figure(figsize=(A4_WIDTH, A4_HEIGHT))
@@ -760,23 +868,46 @@ class preprocess:
             ax1 = fig.add_subplot(gs[idx*3])
             ax1.plot(self.data_seconds['TimeStamp'], self.filtered[f'filtered_{signal}'],
                     color=self.colors[idx], alpha=1, label=f'Filtered {signal}', linewidth=0.5)
-            # Fix exponential fit column reference
             ax1.plot(self.data_seconds['TimeStamp'], self.exp_fits[f'expfit_{signal[-3:]}'],
-                color='black', alpha=1, label='Exponential fit', linewidth=1)
+                    color='black', alpha=1, label='Exponential fit', linewidth=1)
             ax1.set_title(f'Exponential Fit - {signal}')
             ax1.legend(loc='upper right')
             
-            # 2. Z-scored signal
+            # 2. dF/F signal
             ax2 = fig.add_subplot(gs[idx*3 + 1])
-            ax2.plot(self.data_seconds['TimeStamp'], self.zscored[f'z_{signal[-3:]}'],
+            ax2.plot(self.data_seconds['TimeStamp'], self.deltaF_F[f'{signal[-3:]}_dfF'],
                     color=self.colors[idx], linewidth=0.2)
-            ax2.set_title(f'Z-scored Signal - {signal}')
+            ax2.set_title(f'ΔF/F Signal - {signal}')
             
-            # 3. dF/F signal
+            # 3. Z-scored signal
             ax3 = fig.add_subplot(gs[idx*3 + 2])
-            ax3.plot(self.data_seconds['TimeStamp'], self.deltaF_F[f'{signal[-3:]}_dfF'],
-                    color=self.colors[idx],linewidth=0.2)
-            ax3.set_title(f'ΔF/F Signal - {signal}')
+            ax3.plot(self.data_seconds['TimeStamp'], self.zscored[f'z_{signal[-3:]}'],
+                    color=self.colors[idx], linewidth=0.2)
+            ax3.set_title(f'Z-scored Signal - {signal}')
+        
+        # Add cross-correlation plot
+        ax_cc = fig.add_subplot(gs[-1])
+        col1, col2 = '470', '560'
+        z_col1 = self.zscored[f'z_{col1}']
+        z_col2 = self.zscored[f'z_{col2}']
+        cross_corr = np.correlate(z_col1 - np.mean(z_col1), z_col2 - np.mean(z_col2), mode='full')
+        lags = np.arange(-len(z_col1) + 1, len(z_col1))
+        sampling_rate = 1 / np.mean(np.diff(self.data_seconds['TimeStamp']))
+        window_size = int(5 * sampling_rate)
+        center = len(cross_corr) // 2
+        window = cross_corr[center - window_size:center + window_size + 1]
+        window_lags = lags[center - window_size:center + window_size + 1] / sampling_rate
+        peak_idx = np.argmax(np.abs(window))
+        peak_value = round(window[peak_idx], 2)
+        peak_lag = round(window_lags[peak_idx], 2)
+        ax_cc.plot(window_lags, window, label='Cross-correlation')
+        ax_cc.axvline(x=peak_lag, color='r', linestyle='--', label=f'Peak at {peak_lag:.2f}s')
+        ax_cc.scatter([peak_lag], [peak_value], color='r')
+        ax_cc.set_title(f'Cross-correlation between z_{col1} and z_{col2}')
+        ax_cc.set_xlabel('Lag (s)')
+        ax_cc.set_ylabel('Cross-correlation')
+        ax_cc.legend()
+        ax_cc.grid()
         
         # Final formatting
         plt.xlabel('Time (s)')
