@@ -662,37 +662,6 @@ class preprocess:
             for key, value in info.items():
                 writer.writerow([key, value])
         print('Info.csv saved')
-
-    # def add_crucial_info(self, additional = None):
-    #     '''
-    #     :param additional: optional, can take dict where keys are set as column names and
-    #      items will repeat through rows. This must be necessary info for later slicing if data is pooled !!NOT IMPLEMENTED
-    #     :return: a df with mouse ID, timedelta, recording date, and potential additional info
-    #     *IMPORTANT: This must be according to a path where the folder name two levels up from the
-    #      fluorencence.csv file is such that the 4 first letters gives mouse ID
-    #     '''
-    #     # concat dataframes but make sure to add columns specifying the mouse ID, the data, and so on
-    #     # will need to backtrack mouse ID and recording data etc. though file names
-    #     info_columns = pd.DataFrame()
-    #     date_format = '%Y_%m_%d-%H_%M_%S'
- 
-    #     date_obj = datetime.strptime(self.path.split('/')[-2][:], date_format) #This line requires that the saving structure of the photometry software is kept
-
-    #     actualtime = [date_obj + timedelta(0, time) for time in self.data_seconds['TimeStamp']]
-    #     info_columns['Time'] = actualtime
-    #     mouseID = self.path.split('/')[-3]#[:4] # if mouse ID annotation is changed to include more or less letters, the number 4 must be changed
-    #     print(f'Please ensure that {mouseID} is the correct mouse ID \n '
-    #           f'If not, changes must be made to either add_crucial_info fucntion or file naming')
-    #     info_columns['mouseID'] = [mouseID for i in range(len(info_columns))]
-    #     print(f'Mouse {mouseID}')
-    #     Area = input('Add the location of fluorescent protein: ')
-    #     info_columns['Area'] = [Area for i in range(len(info_columns))]
-    #     Sex = input('Add the sex of the mouse: ')
-    #     info_columns['Sex'] = [Sex for i in range(len(info_columns))]
-    #     self.info['mouse_info'] = {'sensors': self.sensors, 'target_area': Area,'sex': Sex}
-        
-    #     print(f'info added for {self.mousename }\n')
-    #     return info_columns
     
     def cross_correlate_signals(self, col1='470', col2='560', plot = False):
         """Cross-correlate specified signals, find absolute peak in ±5s window, and plot the result."""
@@ -747,26 +716,24 @@ class preprocess:
         print(f'Peak cross-correlation value: {peak_value} at lag: {peak_lag:.2f}s')
     
 
-    def write_preprocessed_csv(self, Onix_align = True):
+    def write_preprocessed_csv(self, Onix_align = True, motion = False):
         """
         Writes the processed traces into a CSV file containing:
-        - Corrected and z-scored traces
-        - Optionally motion-corrected signal
+        - dF/F and z-scored traces
+        - Optionally motion-corrected signal FIXME this is not implemented yet
         - If self.events exists, it also writes the events DataFrame to a separate file
-    
-        :param motion_correct: Default False, set to True if a motion-corrected signal should be added. ?FIXME? 
+        
+        :param Onix_align: FIXME unclear what Onix_align means or even if it is useful 
+        :param motion_correct: Default False, set to True if a motion-corrected signal should be added. 
+        FIXME this is not implemented yet
         """
-        # Prepare the base filename
-        filename = self.path.split('/')[-2][:]
     
         # Combine the base data #add or remove signals to save.
         final_df = pd.concat([self.data_seconds.reset_index(drop=True),
-                              #self.filtered.reset_index(drop=True),FIXME delete as not needed, mousename and target area already in info.csv 
                               self.deltaF_F.reset_index(drop=True),
                               self.zscored.reset_index(drop=True),], axis=1)
-                              #self.crucial_info.reset_index(drop=True)], axis=1) FIXME delete as not needed, mousename and target area already in info.csv 
         
-        final_df = final_df.loc[:, ~final_df.columns.str.contains('^Unnamed')] #removed unwanted extra column
+        final_df = final_df.loc[:, ~final_df.columns.str.contains('^Unnamed')] #removes unwanted extra column, which apparently gets added sometimes???
     
         # Save the main fluorescence file
         final_df.to_csv(self.save_path + '/Processed_fluorescence.csv', index=False)
@@ -774,7 +741,7 @@ class preprocess:
         
         # Handle events if self.events exists
         if hasattr(self, 'events') and isinstance(self.events, pd.DataFrame) and (Onix_align ==False):
-            # Save the events DataFrame separately
+            # Save the events DataFrame separately NOTE unclear when would this ever be useful, these events are force-aligned to the 470 signal and not the original signal, so not useful for ONIX alignment
             self.events.to_csv(self.save_path + '/Events.csv', index=False)
             print('Events detected and saved.')
             
@@ -786,64 +753,8 @@ class preprocess:
 
         mpl.pyplot.close()
         
-        
-    # def plot_all_signals(self):
-    #     """Generate comprehensive figure of signal processing steps on A4 page"""
-    #     # A4 dimensions and setup
-    #     A4_WIDTH = 8.27
-    #     A4_HEIGHT = 11.69
-    #     SMALL_SIZE = 6
-    #     MEDIUM_SIZE = 8
-        
-    #     plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
-    #     plt.rc('axes', titlesize=MEDIUM_SIZE)    # fontsize of the axes title
-    #     plt.rc('axes', labelsize=SMALL_SIZE)     # fontsize of the x and y labels
-    #     plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
-        
-    #     n_signals = len(self.signals.columns)
-    #     n_rows = n_signals * 3
-        
-    #     # Create figure
-    #     fig = plt.figure(figsize=(A4_WIDTH, A4_HEIGHT))
-    #     gs = fig.add_gridspec(n_rows, 1, hspace=0.5)
-        
-    #     for idx, signal in enumerate(self.signals.columns):
-    #         # 1. Exponential fit
-    #         ax1 = fig.add_subplot(gs[idx*3])
-    #         ax1.plot(self.data_seconds['TimeStamp'], self.filtered[f'filtered_{signal}'],
-    #                 color=self.colors[idx], alpha=1, label=f'Filtered {signal}', linewidth=0.5)
-    #         ax1.plot(self.data_seconds['TimeStamp'], self.exp_fits[f'expfit_{signal[-3:]}'],
-    #                 color='black', alpha=1, label='Exponential fit', linewidth=1)
-    #         ax1.set_title(f'Exponential Fit - {signal}')
-    #         ax1.legend(loc='upper right')
-            
-    #         # 2. dF/F signal
-    #         ax2 = fig.add_subplot(gs[idx*3 + 1])
-    #         ax2.plot(self.data_seconds['TimeStamp'], self.deltaF_F[f'{signal[-3:]}_dfF'],
-    #                 color=self.colors[idx], linewidth=0.2)
-    #         ax2.set_title(f'ΔF/F Signal - {signal}')
-            
-    #         # 3. Z-scored signal
-    #         ax3 = fig.add_subplot(gs[idx*3 + 2])
-    #         ax3.plot(self.data_seconds['TimeStamp'], self.zscored[f'z_{signal[-3:]}'],
-    #                 color=self.colors[idx], linewidth=0.2)
-    #         ax3.set_title(f'Z-scored Signal - {signal}')
-        
-    #     # Final formatting
-    #     plt.xlabel('Time (s)')
-    #     filter_method = self.info['filtering_method'][signal]
-    #     detrend_method = self.info['detrend_method']
-    #     fig.suptitle(f'Signal Processing Steps - {self.mousename}\nFiltering: {filter_method}, Detrending: {detrend_method}', 
-    #                 y=0.95, fontsize=MEDIUM_SIZE)
-    #     plt.tight_layout()
-        
-    #     # Save figures in multiple formats
-    #     base_path = f'{self.save_path}/all_signals_{self.mousename}'
-    #     plt.savefig(f'{base_path}.png', bbox_inches='tight', dpi=300)
-    #     plt.savefig(f'{base_path}.eps', bbox_inches='tight', format='eps')
-    #     plt.close()
     
-    def plot_all_signals(self):
+    def plot_all_signals(self, sensors, plot_info=''):
         """Generate comprehensive figure of signal processing steps on A4 page"""
         # A4 dimensions and setup
         A4_WIDTH = 8.27
@@ -870,20 +781,20 @@ class preprocess:
                     color=self.colors[idx], alpha=1, label=f'Filtered {signal}', linewidth=0.5)
             ax1.plot(self.data_seconds['TimeStamp'], self.exp_fits[f'expfit_{signal[-3:]}'],
                     color='black', alpha=1, label='Exponential fit', linewidth=1)
-            ax1.set_title(f'Exponential Fit - {signal}')
+            ax1.set_title(f'Exponential Fit - {sensors[signal[-3:]]}')
             ax1.legend(loc='upper right')
             
             # 2. dF/F signal
             ax2 = fig.add_subplot(gs[idx*3 + 1])
             ax2.plot(self.data_seconds['TimeStamp'], self.deltaF_F[f'{signal[-3:]}_dfF'],
                     color=self.colors[idx], linewidth=0.2)
-            ax2.set_title(f'ΔF/F Signal - {signal}')
+            ax2.set_title(f'ΔF/F Signal - {sensors[signal[-3:]]}')
             
             # 3. Z-scored signal
             ax3 = fig.add_subplot(gs[idx*3 + 2])
             ax3.plot(self.data_seconds['TimeStamp'], self.zscored[f'z_{signal[-3:]}'],
                     color=self.colors[idx], linewidth=0.2)
-            ax3.set_title(f'Z-scored Signal - {signal}')
+            ax3.set_title(f'Z-scored Signal - {sensors[signal[-3:]]}')
         
         # Add cross-correlation plot
         ax_cc = fig.add_subplot(gs[-1])
@@ -903,7 +814,7 @@ class preprocess:
         ax_cc.plot(window_lags, window, label='Cross-correlation')
         ax_cc.axvline(x=peak_lag, color='r', linestyle='--', label=f'Peak at {peak_lag:.2f}s')
         ax_cc.scatter([peak_lag], [peak_value], color='r')
-        ax_cc.set_title(f'Cross-correlation between z_{col1} and z_{col2}')
+        ax_cc.set_title(f'Cross-correlation between {sensors[col1]} and {sensors[col2]}')
         ax_cc.set_xlabel('Lag (s)')
         ax_cc.set_ylabel('Cross-correlation')
         ax_cc.legend()
@@ -913,7 +824,7 @@ class preprocess:
         plt.xlabel('Time (s)')
         filter_method = self.info['filtering_method'][signal]
         detrend_method = self.info['detrend_method']
-        fig.suptitle(f'Signal Processing Steps - {self.mousename}\nFiltering: {filter_method}, Detrending: {detrend_method}', 
+        fig.suptitle(f'Signal Processing Steps - {self.mousename} {plot_info}\nFiltering: {filter_method}, Detrending: {detrend_method}', 
                     y=0.95, fontsize=MEDIUM_SIZE)
         plt.tight_layout()
         
