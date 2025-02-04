@@ -209,9 +209,11 @@ def read_OnixAnalogFrameCount(path):
         read_dfs.append(pd.read_csv(path/'OnixAnalogFrameCount'/f"OnixAnalogFrameCount_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv"))
     return pd.concat(read_dfs).reset_index().drop(columns='index')
 
-def read_OnixAnalogData(dataset_path, binarise=False):
+def read_OnixAnalogData(dataset_path, channels=[0], binarise=False):
     # https://github.com/neurogears/vestibular-vr/blob/benchmark-analysis/Python/vestibular-vr/analysis/round_trip.py
     # https://open-ephys.github.io/onix-docs/Software%20Guide/Bonsai.ONIX/Nodes/AnalogIODevice.html
+    #:param channels: list of analogue channels to read (0-11)
+    
     start_time = time.time()
     arrays_to_concatenate = []
     files_to_read = [x for x in os.listdir(dataset_path/'OnixAnalogData')]
@@ -227,16 +229,17 @@ def read_OnixAnalogData(dataset_path, binarise=False):
             photo_diode = np.fromfile(f, dtype=np.int16)
 
             try:
-                photo_diode = np.reshape(photo_diode, (-1,12))
+                photo_diode = np.reshape(photo_diode, (-1, 12))[:, channels]  # Load specified columns
             except:
                 print(f'ERROR: Cannot reshape loaded "{filename}" binary file into [-1, 12] shape. Continuing with non-reshaped data.')
             
             arrays_to_concatenate.append(photo_diode)
 
+    # Concatenate all arrays row-wise
     photo_diode = np.concatenate(arrays_to_concatenate)
-    
+
     if binarise:
-        PHOTODIODE_THRESHOLD = 120
+        PHOTODIODE_THRESHOLD = 120  # FIXME magic number NOTE or at least check if it is a good threshold across datasets, pulse seems very short (single frame) and photodiode gain can filter the signal significantly  
         photo_diode[np.where(photo_diode <= PHOTODIODE_THRESHOLD)] = 0
         photo_diode[np.where(photo_diode > PHOTODIODE_THRESHOLD)] = 1
         photo_diode = photo_diode.astype(bool)
