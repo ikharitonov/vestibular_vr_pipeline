@@ -174,7 +174,7 @@ def read_OnixDigital(path, version=None):
             data = pd.read_csv(path/'OnixDigital'/f"OnixDigital_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv")
             
         if version == 'version2':
-            onix_digital_reader = utils.TimestampedCsvReader("OnixDigital", columns=["Clock", "HubClock", #FIXME we are inside utiils, so probably not needed, this is an error by copying from notebook?
+            onix_digital_reader = utils.TimestampedCsvReader("OnixDigital", columns=["Clock", "HubClock", #FIXME add missing comma - but then it fails on other files?
                                                                          "DigitalInputs0",
                                                                          "DigitalInputs1",
                                                                          "DigitalInputs2",
