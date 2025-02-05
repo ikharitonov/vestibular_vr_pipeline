@@ -81,7 +81,7 @@ class TimestampedCsvReader(Csv):
         return data
     
     
-class OnixDigitalReader(Csv):
+class OnixDigitalReader(Csv): #multiple files aware
     def __init__(self, pattern, columns):
         super().__init__(pattern, columns, extension="csv")
         self._rawcolumns = columns
@@ -145,21 +145,21 @@ class OnixDigitalReader(Csv):
             raise
         
         
-def load_2(reader: Reader, root: Path) -> pd.DataFrame: #was called load_vers2_3 in Hilde's branch
+def load_2(reader: Reader, root: Path) -> pd.DataFrame: #to concatenate when multiple files are present in a data directory 
     root = Path(root)
     pattern = f"{root.joinpath(reader.pattern).joinpath(reader.pattern)}_*.{reader.extension}"
     data = [reader.read(Path(file)) for file in glob(pattern)]
     return pd.concat(data)
 
 
-def load(reader: Reader, root: Path) -> pd.DataFrame:
+def load(reader: Reader, root: Path) -> pd.DataFrame: #used to load H1 & H2 registers
     root = Path(root)
     pattern = f"{root.joinpath(root.name)}_{reader.register.address}_*.bin"
     data = [reader.read(file) for file in glob(pattern)]
     return pd.concat(data)
     
 
-def load_harp(reader: Harp, root: Path) -> pd.DataFrame:
+def load_harp(reader: Harp, root: Path) -> pd.DataFrame: #multiple files aware
     root = Path(root)
     pattern = f"{root.joinpath(root.name)}_{reader.register.address}_*.bin"
     print(pattern)
@@ -268,7 +268,7 @@ def read_ExperimentEvents(path):
 #     return pd.concat(read_dfs).reset_index().drop(columns='index')
 
 
-def read_OnixAnalogFrameCount(path):
+def read_OnixAnalogFrameCount(path): #multiple files aware
     filenames = os.listdir(path/'OnixAnalogFrameCount')
     filenames = [x for x in filenames if x[:20]=='OnixAnalogFrameCount'] # filter out other (hidden) files
     sorted_filenames = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in filenames])).sort_values()
@@ -277,7 +277,7 @@ def read_OnixAnalogFrameCount(path):
         read_dfs.append(pd.read_csv(path/'OnixAnalogFrameCount'/f"OnixAnalogFrameCount_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv"))
     return pd.concat(read_dfs).reset_index().drop(columns='index')
 
-def read_OnixAnalogData(dataset_path, channels=[0], binarise=False):
+def read_OnixAnalogData(dataset_path, channels=[0], binarise=False): #multiple files aware
     # https://github.com/neurogears/vestibular-vr/blob/benchmark-analysis/Python/vestibular-vr/analysis/round_trip.py
     # https://open-ephys.github.io/onix-docs/Software%20Guide/Bonsai.ONIX/Nodes/AnalogIODevice.html
     #:param channels: list of analogue channels to read (0-11)
@@ -316,7 +316,7 @@ def read_OnixAnalogData(dataset_path, channels=[0], binarise=False):
 
     return photo_diode
 
-def read_OnixAnalogClock(dataset_path):
+def read_OnixAnalogClock(dataset_path): #multiple files aware
     start_time = time.time()
     arrays_to_concatenate = []
     files_to_read = [x for x in os.listdir(dataset_path/'OnixAnalogClock')]
@@ -370,18 +370,18 @@ def read_SessionSettings(dataset_path, print_contents=False):
 
     return data
 
-def read_fluorescence(photometry_data_path):
-    try:
-        Fluorescence = pd.read_csv(photometry_data_path/'Processed_Fluorescence.csv', skiprows=1, index_col=False)
-    except FileNotFoundError:
-        Fluorescence = pd.read_csv(photometry_data_path/'Fluorescence.csv', skiprows=1, index_col=False)
+# def read_fluorescence(photometry_data_path):
+#     try:
+#         Fluorescence = pd.read_csv(photometry_data_path/'Processed_Fluorescence.csv', skiprows=1, index_col=False)
+#     except FileNotFoundError:
+#         Fluorescence = pd.read_csv(photometry_data_path/'Fluorescence.csv', skiprows=1, index_col=False)
         
-    if 'Unnamed: 5' in Fluorescence.columns: Fluorescence = Fluorescence.drop(columns='Unnamed: 5')
-    return Fluorescence
+#     if 'Unnamed: 5' in Fluorescence.columns: Fluorescence = Fluorescence.drop(columns='Unnamed: 5')
+#     return Fluorescence
 
-def read_fluorescence_events(photometry_data_path):
-    Events = pd.read_csv(photometry_data_path/'Events.csv', skiprows=0, index_col=False)
-    return Events
+# def read_fluorescence_events(photometry_data_path):
+#     Events = pd.read_csv(photometry_data_path/'Events.csv', skiprows=0, index_col=False)
+#     return Events
 
 def load_register_paths(dataset_path):
     
@@ -392,27 +392,41 @@ def load_register_paths(dataset_path):
     
     h1_files = os.listdir(h1_folder)
     h1_files = [f for f in h1_files if f.split('_')[0] == 'HarpDataH1']
-    h1_dict = {int(filename.split('_')[1]):h1_folder/filename for filename in h1_files}
+    h1_dict = {}
+    for filename in h1_files:
+        register = int(filename.split('_')[1])
+        if register not in h1_dict:
+            h1_dict[register] = []
+        h1_dict[register].append(h1_folder/filename)
+    
+    # Sort files by timestamp for each register
+    for register in h1_dict:
+        h1_dict[register].sort()  # Files sort by timestamp naturally
     
     h2_files = os.listdir(h2_folder)
     h2_files = [f for f in h2_files if f.split('_')[0] == 'HarpDataH2']
-    h2_dict = {int(filename.split('_')[1]):h2_folder/filename for filename in h2_files}
+    h2_dict = {}
+    for filename in h2_files:
+        register = int(filename.split('_')[1])
+        if register not in h2_dict:
+            h2_dict[register] = []
+        h2_dict[register].append(h2_folder/filename)
     
-    print(f'Dataset {dataset_path.name} contains following registers:')
-    print(f'H1: {list(h1_dict.keys())}')
-    print(f'H2: {list(h2_dict.keys())}')
+    # Sort files by timestamp for each register
+    for register in h2_dict:
+        h2_dict[register].sort()  # Files sort by timestamp naturally
     
     return h1_dict, h2_dict
 
 def load_registers(dataset_path):
-
-    start_time = time.time()  # Use time.time() instead of time()
+    start_time = time.time()
     
     h1_dict, h2_dict = load_register_paths(dataset_path)
     
     h1_data_streams = {}
     for register in h1_dict.keys():
         data_stream = load(get_register_object(register, 'h1'), dataset_path/'HarpDataH1')
+        
         if data_stream.columns.shape[0] > 1:
             for col_name in data_stream.columns:
                 h1_data_streams[f'{col_name}({register})'] = data_stream[col_name]
@@ -420,10 +434,11 @@ def load_registers(dataset_path):
             h1_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream
         else:
             raise ValueError(f"Loaded data stream does not contain supported number of columns in Pandas DataFrame. Dataframe columns shape = {data_stream.columns.shape}")
-            
+    
     h2_data_streams = {}
     for register in h2_dict.keys():
         data_stream = load(get_register_object(register, 'h2'), dataset_path/'HarpDataH2')
+        
         if data_stream.columns.shape[0] > 1:
             for col_name in data_stream.columns:
                 h2_data_streams[f'{col_name}({register})'] = data_stream[col_name]
