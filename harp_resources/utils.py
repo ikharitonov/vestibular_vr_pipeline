@@ -81,7 +81,7 @@ class TimestampedCsvReader(Csv):
         return data
     
     
-class TimestampedCsvReader_OnixDigital_Cohort1(Csv):
+class OnixDigitalReader(Csv):
     def __init__(self, pattern, columns):
         super().__init__(pattern, columns, extension="csv")
         self._rawcolumns = columns
@@ -94,7 +94,7 @@ class TimestampedCsvReader_OnixDigital_Cohort1(Csv):
                 for i, line in enumerate(f):
                     if i == 0:
                         continue
-                        
+                    
                     parts = line.strip().split(',')
                     
                     processed_line = {
@@ -119,6 +119,19 @@ class TimestampedCsvReader_OnixDigital_Cohort1(Csv):
                 'Value.DigitalInputs': 'DigitalInputs0'
             }
             data = data.rename(columns=column_mapping)
+            
+            # Check if DigitalInputs0 contains numbers
+            try:
+                data['DigitalInputs0'] = pd.to_numeric(data['DigitalInputs0'])
+                is_numeric = True
+            except ValueError:
+                is_numeric = False
+            
+            # Create PhotometrySyncState column
+            if is_numeric:
+                data['PhotometrySyncState'] = data['DigitalInputs0'].apply(lambda x: x == 255)
+            else:
+                data['PhotometrySyncState'] = data['DigitalInputs0'].apply(lambda x: x.strip() == 'Pin0')
             
             # Transform to Time
             data["Time"] = data["Seconds"].apply(api.aeon)
