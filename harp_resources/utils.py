@@ -418,9 +418,152 @@ def load_register_paths(dataset_path):
     
     return h1_dict, h2_dict
 
-def load_registers(dataset_path):
-    start_time = time.time()
+# def load_registers(dataset_path):
+#     start_time = time.time()
     
+#     h1_dict, h2_dict = load_register_paths(dataset_path)
+    
+#     h1_data_streams = {}
+#     for register in h1_dict.keys():
+#         data_stream = load(get_register_object(register, 'h1'), dataset_path/'HarpDataH1')
+        
+#         if data_stream.columns.shape[0] > 1:
+#             for col_name in data_stream.columns:
+#                 h1_data_streams[f'{col_name}({register})'] = data_stream[col_name]
+#         elif data_stream.columns.shape[0] == 1:
+#             h1_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream
+#         else:
+#             raise ValueError(f"Loaded data stream does not contain supported number of columns in Pandas DataFrame. Dataframe columns shape = {data_stream.columns.shape}")
+    
+#     h2_data_streams = {}
+#     for register in h2_dict.keys():
+#         data_stream = load(get_register_object(register, 'h2'), dataset_path/'HarpDataH2')
+        
+#         if data_stream.columns.shape[0] > 1:
+#             for col_name in data_stream.columns:
+#                 h2_data_streams[f'{col_name}({register})'] = data_stream[col_name]
+#         elif data_stream.columns.shape[0] == 1:
+#             h2_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream[data_stream.columns[0]]
+#         else:
+#             raise ValueError(f"Loaded data stream does not contain supported number of columns in Pandas DataFrame. Dataframe columns shape = {data_stream.columns.shape}")
+    
+#     # Converting any pd.DataFrames present (assumed to be single column DataFrames) into pd.Series
+#     for stream_name, stream in h1_data_streams.items():
+#         if type(stream) == pd.DataFrame:
+#             try:
+#                 h1_data_streams[stream_name] = pd.Series(data=stream.values.squeeze(), index=stream.index)
+#             except:
+#                 print(f'ERROR: Attempted to convert the loaded register "{stream_name}" to pandas.Series common format, but failed. Likely cause is that it has more than a single column.')
+#     for stream_name, stream in h2_data_streams.items():
+#         if type(stream) == pd.DataFrame:
+#             try:
+#                 h1_data_streams[stream_name] = pd.Series(data=stream.values.squeeze(), index=stream.index)
+#             except:
+#                 print(f'ERROR: Attempted to convert the loaded register "{stream_name}" to pandas.Series common format, but failed. Likely cause is that it has more than a single column.')
+ 
+#     print(f'Registers loaded in {time.time() - start_time:.2f} seconds.')
+    
+#     return {'H1': h1_data_streams, 'H2': h2_data_streams}
+
+# def load_registers_df(dataset_path): #loads registers into a dataframe, which is probably stupid as it will be a gigantic file before downsampling, but could be downsampled in a single go, bot like a dict
+#     h1_dict, h2_dict = load_register_paths(dataset_path)
+    
+#     h1_data_streams = {}
+#     for register in h1_dict.keys():
+#         data_stream = load(get_register_object(register, 'h1'), dataset_path/'HarpDataH1')
+        
+#         if data_stream.columns.shape[0] > 1:
+#             for col_name in data_stream.columns:
+#                 h1_data_streams[f'{col_name}({register})'] = data_stream[col_name]
+#         elif data_stream.columns.shape[0] == 1:
+#             h1_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream
+#         else:
+#             raise ValueError(f"Loaded data stream does not contain supported number of columns in Pandas DataFrame.")
+    
+#     h2_data_streams = {}
+#     for register in h2_dict.keys():
+#         data_stream = load(get_register_object(register, 'h2'), dataset_path/'HarpDataH2')
+        
+#         if data_stream.columns.shape[0] > 1:
+#             for col_name in data_stream.columns:
+#                 h2_data_streams[f'{col_name}({register})'] = data_stream[col_name]
+#         elif data_stream.columns.shape[0] == 1:
+#             h2_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream[data_stream.columns[0]]
+#         else:
+#             raise ValueError(f"Loaded data stream does not contain supported number of columns in Pandas DataFrame.")
+    
+#     # Convert DataFrames to Series
+#     for stream_name, stream in h1_data_streams.items():
+#         if isinstance(stream, pd.DataFrame):
+#             try:
+#                 h1_data_streams[stream_name] = pd.Series(data=stream.values.squeeze(), index=stream.index)
+#             except:
+#                 raise ValueError(f"Failed to convert register {stream_name} to Series.")
+                
+#     for stream_name, stream in h2_data_streams.items():
+#         if isinstance(stream, pd.DataFrame):
+#             try:            def load_registers(dataset_path, dataframe=False):
+#                 """Load register data and return as either dictionary or DataFrame
+#                 Args:
+#                     dataset_path: Path to data directory
+#                     dataframe: If True returns DataFrame, if False returns dict
+#                 """
+#                 h1_dict, h2_dict = load_register_paths(dataset_path)
+                
+#                 h1_data_streams = {}
+#                 for register in h1_dict.keys():
+#                     data_stream = load(get_register_object(register, 'h1'), dataset_path/'HarpDataH1')
+                    
+#                     if data_stream.columns.shape[0] > 1:
+#                         for col_name in data_stream.columns:
+#                             h1_data_streams[f'{col_name}({register})'] = data_stream[col_name]
+#                     elif data_stream.columns.shape[0] == 1:
+#                         h1_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream
+#                     else:
+#                         raise ValueError("Loaded data stream does not contain supported number of columns")
+                
+#                 h2_data_streams = {}
+#                 for register in h2_dict.keys():
+#                     data_stream = load(get_register_object(register, 'h2'), dataset_path/'HarpDataH2')
+                    
+#                     if data_stream.columns.shape[0] > 1:
+#                         for col_name in data_stream.columns:
+#                             h2_data_streams[f'{col_name}({register})'] = data_stream[col_name]
+#                     elif data_stream.columns.shape[0] == 1:
+#                         h2_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream[data_stream.columns[0]]
+#                     else:
+#                         raise ValueError("Loaded data stream does not contain supported number of columns")
+                
+#                 # Convert DataFrames to Series
+#                 for streams in [h1_data_streams, h2_data_streams]:
+#                     for stream_name, stream in streams.items():
+#                         if isinstance(stream, pd.DataFrame):
+#                             try:
+#                                 streams[stream_name] = pd.Series(data=stream.values.squeeze(), index=stream.index)
+#                             except:
+#                                 raise ValueError(f"Failed to convert register {stream_name} to Series")
+                
+#                 if dataframe:
+#                     # Return as DataFrame
+#                     all_series = {**h1_data_streams, **h2_data_streams}
+#                     return pd.DataFrame(all_series)
+#                 else:
+#                     # Return as dict
+#                     return {'H1': h1_data_streams, 'H2': h2_data_streams}
+#                 h2_data_streams[stream_name] = pd.Series(data=stream.values.squeeze(), index=stream.index)
+#             except:
+#                 raise ValueError(f"Failed to convert register {stream_name} to Series.")
+    
+#     # Combine all series into single DataFrame
+#     all_series = {**h1_data_streams, **h2_data_streams}
+#     return pd.DataFrame(all_series)
+
+def load_registers(dataset_path, dataframe=False):
+    """Load register data and return as either dictionary or DataFrame
+    Args:
+        dataset_path: Path to data directory
+        dataframe: If True returns DataFrame, if False returns dict
+    """
     h1_dict, h2_dict = load_register_paths(dataset_path)
     
     h1_data_streams = {}
@@ -433,7 +576,7 @@ def load_registers(dataset_path):
         elif data_stream.columns.shape[0] == 1:
             h1_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream
         else:
-            raise ValueError(f"Loaded data stream does not contain supported number of columns in Pandas DataFrame. Dataframe columns shape = {data_stream.columns.shape}")
+            raise ValueError("Loaded data stream does not contain supported number of columns")
     
     h2_data_streams = {}
     for register in h2_dict.keys():
@@ -445,25 +588,24 @@ def load_registers(dataset_path):
         elif data_stream.columns.shape[0] == 1:
             h2_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream[data_stream.columns[0]]
         else:
-            raise ValueError(f"Loaded data stream does not contain supported number of columns in Pandas DataFrame. Dataframe columns shape = {data_stream.columns.shape}")
+            raise ValueError("Loaded data stream does not contain supported number of columns")
     
-    # Converting any pd.DataFrames present (assumed to be single column DataFrames) into pd.Series
-    for stream_name, stream in h1_data_streams.items():
-        if type(stream) == pd.DataFrame:
-            try:
-                h1_data_streams[stream_name] = pd.Series(data=stream.values.squeeze(), index=stream.index)
-            except:
-                print(f'ERROR: Attempted to convert the loaded register "{stream_name}" to pandas.Series common format, but failed. Likely cause is that it has more than a single column.')
-    for stream_name, stream in h2_data_streams.items():
-        if type(stream) == pd.DataFrame:
-            try:
-                h1_data_streams[stream_name] = pd.Series(data=stream.values.squeeze(), index=stream.index)
-            except:
-                print(f'ERROR: Attempted to convert the loaded register "{stream_name}" to pandas.Series common format, but failed. Likely cause is that it has more than a single column.')
- 
-    print(f'Registers loaded in {time.time() - start_time:.2f} seconds.')
+    # Convert DataFrames to Series
+    for streams in [h1_data_streams, h2_data_streams]:
+        for stream_name, stream in streams.items():
+            if isinstance(stream, pd.DataFrame):
+                try:
+                    streams[stream_name] = pd.Series(data=stream.values.squeeze(), index=stream.index)
+                except:
+                    raise ValueError(f"Failed to convert register {stream_name} to Series")
     
-    return {'H1': h1_data_streams, 'H2': h2_data_streams}
+    if dataframe:
+        # Return as DataFrame
+        all_series = {**h1_data_streams, **h2_data_streams}
+        return pd.DataFrame(all_series)
+    else:
+        # Return as dict
+        return {'H1': h1_data_streams, 'H2': h2_data_streams}
 
 def load_streams_from_h5(data_path):
     # File path to read the HDF5 file
