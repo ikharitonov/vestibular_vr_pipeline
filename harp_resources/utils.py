@@ -13,8 +13,11 @@ import harp
 from aeon.io.reader import Reader, Csv, Harp
 import aeon.io.api as api
 
+import csv
+
 #FIXME list
-# very verbose, e.r. printing which dataset is loaded many times, giving how long it took (find and remove these time.time())
+# some functions are very verbose, e.g. printing which dataset is loaded many times, giving how long it took (find and remove these time.time())
+# when everything works, delete commented out functions
 
 class SessionData(Reader):
     """Extracts metadata information from a settings .jsonl file."""
@@ -37,19 +40,6 @@ class SessionData(Reader):
         if print_contents:
             print(json.dumps(data, indent=4))
 
-
-class TimestampedCsvReader(Csv):
-    def __init__(self, pattern, columns):
-        super().__init__(pattern, columns, extension="csv")
-        self._rawcolumns = ["Time"] + columns
-
-    def read(self, file):
-        data = pd.read_csv(file, header=0, names=self._rawcolumns)
-        data["Seconds"] = data["Time"]
-        data["Time"] = data["Time"].transform(lambda x: api.aeon(x))
-        data.set_index("Time", inplace=True)
-        return data
-    
 
 class PhotometryReader(Csv):
     def __init__(self, pattern):
@@ -78,6 +68,70 @@ class Video(Csv):
         return data
 
 
+class TimestampedCsvReader(Csv):
+    def __init__(self, pattern, columns):
+        super().__init__(pattern, columns, extension="csv")
+        self._rawcolumns = ["Time"] + columns
+
+    def read(self, file):
+        data = pd.read_csv(file, header=0, names=self._rawcolumns)
+        data["Seconds"] = data["Time"]
+        data["Time"] = data["Time"].transform(lambda x: api.aeon(x))
+        data.set_index("Time", inplace=True)
+        return data
+    
+    
+class TimestampedCsvReader_OnixDigital_Cohort1(Csv):
+    def __init__(self, pattern, columns):
+        super().__init__(pattern, columns, extension="csv")
+        self._rawcolumns = columns
+
+    def read(self, file):
+        try:
+            processed_lines = []
+            
+            with open(file, 'r') as f:
+                for i, line in enumerate(f):
+                    if i == 0:
+                        continue
+                        
+                    parts = line.strip().split(',')
+                    
+                    processed_line = {
+                        'Seconds': float(parts[0]),
+                        'Value.Clock': float(parts[1]),
+                        'Value.HubClock': float(parts[2]),
+                        'Value.DigitalInputs': parts[3].strip(),
+                        'Value.Buttons': parts[-1]
+                    }
+                    processed_lines.append(processed_line)
+            
+            # Create DataFrame
+            data = pd.DataFrame(processed_lines)
+            
+            # Keep only specified columns, no duplicates
+            data = data[self._rawcolumns].copy()
+            
+            # Rename columns
+            column_mapping = {
+                'Value.Clock': 'Clock',
+                'Value.HubClock': 'HubClock',
+                'Value.DigitalInputs': 'DigitalInputs0'
+            }
+            data = data.rename(columns=column_mapping)
+            
+            # Transform to Time
+            data["Time"] = data["Seconds"].apply(api.aeon)
+            data.set_index("Time", inplace=True)
+            
+            return data
+            
+        except Exception as e:
+            print(f"Error processing file {file}: {e}")
+            print("Data sample at error:", data.head() if 'data' in locals() else "No data loaded")
+            raise
+        
+        
 def load_2(reader: Reader, root: Path) -> pd.DataFrame: #was called load_vers2_3 in Hilde's branch
     root = Path(root)
     pattern = f"{root.joinpath(reader.pattern).joinpath(reader.pattern)}_*.{reader.extension}"
@@ -146,58 +200,59 @@ def read_ExperimentEvents(path):
         return None
 
 
-def read_OnixDigital(path, version=None):
-    # version refers to how they were saved: 1 means Cohort 0, 2 means Cohort 1 and 3 means Cohort 2 onwards
-    # but automatic version may work, that would be ideal 
+# def read_OnixDigital(path, version=None):
+#     # version refers to how they were saved: 0 means Cohort 0, 1 means Cohort 1 and 2 means Cohort 2 onwards
+#     # but automatic version may work, that would be ideal 
     
-    filenames = os.listdir(path/'OnixDigital')
-    filenames = [x for x in filenames if x[:11]=='OnixDigital'] # filter out other (hidden) files
-    sorted_filenames = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in filenames])).sort_values()
-    read_dfs = []
+#     filenames = os.listdir(path/'OnixDigital')
+#     filenames = [x for x in filenames if x[:11]=='OnixDigital'] # filter out other (hidden) files
+#     sorted_filenames = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in filenames])).sort_values()
+#     print (filenames)
+#     read_dfs = []
 
-    #Attempt to detect file version
-    if version is None:
-        if any('OnixDigital' in fname for fname in filenames):
-            version = "version1"
-            print('Detected: First Onix Digital version')
-        elif any('Clock' in fname for fname in filenames):
-            version = "version3"
-            print('Detected: New Onix Digital version')
-        else:
-            version = "version2"
-            print('Detected: Second Onix Digital version')
+#     # #Attempt to detect file version
+#     # if version is None:
+#     #     if any('OnixDigital' in fname for fname in filenames):
+#     #         version = "version0"
+#     #         print('Detected: First Onix Digital version, Cohort 0')
+#     #     elif any('Clock' in fname for fname in filenames):
+#     #         version = "version2"
+#     #         print('Detected: New Onix Digital version, Cohort 2+')
+#     #     else:
+#     #         version = "version1"
+#     #         print('Detected: Second Onix Digital version, Cohort 1')
     
-    for row in sorted_filenames: 
-        #Reading the data into csv:
-        #Version 1 and 2
-        if version == 'version1':
-            data = pd.read_csv(path/'OnixDigital'/f"OnixDigital_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv")
+#     for row in sorted_filenames: 
+#         #Reading the data into csv:
+#         #Version 1 and 2
+#         if version == 'version0':
+#             data = pd.read_csv(path/'OnixDigital'/f"OnixDigital_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv")
             
-        if version == 'version2':
-            onix_digital_reader = utils.TimestampedCsvReader("OnixDigital", columns=["Clock", "HubClock", #FIXME add missing comma - but then it fails on other files?
-                                                                         "DigitalInputs0",
-                                                                         "DigitalInputs1",
-                                                                         "DigitalInputs2",
-                                                                         "DigitalInputs3",
-                                                                         "DigitalInputs4",
-                                                                         "DigitalInputs5"
-                                                                         "DigitalInputs6",
-                                                                         "DigitalInputs7",
-                                                                         "DigitalInputs8",
-                                                                         "Buttons"])
-            onix_harp_reader = utils.TimestampedCsvReader("OnixHarp", columns=["Clock", "HubClock", "HarpTime"])
+#         if version == 'version1':
+#             onix_digital_reader = utils.TimestampedCsvReader("OnixDigital", columns=["Clock", "HubClock", #FIXME add missing comma - but then it fails on other files?
+#                                                                          "DigitalInputs0",
+#                                                                          "DigitalInputs1",
+#                                                                          "DigitalInputs2",
+#                                                                          "DigitalInputs3",
+#                                                                          "DigitalInputs4",
+#                                                                          "DigitalInputs5"
+#                                                                          "DigitalInputs6",
+#                                                                          "DigitalInputs7",
+#                                                                          "DigitalInputs8",
+#                                                                          "Buttons"])
+#             onix_harp_reader = utils.TimestampedCsvReader("OnixHarp", columns=["Clock", "HubClock", "HarpTime"])
             
-            data = utils.load_vers2_3(onix_digital_reader, path)
+#             data = utils.load_2(onix_digital_reader, path)
         
-        if version == 'version3':
-            onix_digital_reader = utils.TimestampedCsvReader("OnixDigital", columns=["Clock", "HubClock", "DigitalInputs", "Buttons"])
-            data = load_vers2_3(onix_digital_reader, path) # Ensure load_vers2_3 can take this path type Path()
+#         if version == 'version2':
+#             onix_digital_reader = utils.TimestampedCsvReader("OnixDigital", columns=["Clock", "HubClock", "DigitalInputs", "Buttons"])
+#             data = load_vers2_3(onix_digital_reader, path) # Ensure load_vers2_3 can take this path type Path()
 
-        #appending all dfs to a list
-        read_dfs.append(data)
+#         #appending all dfs to a list
+#         read_dfs.append(data)
 
     
-    return pd.concat(read_dfs).reset_index().drop(columns='index')
+#     return pd.concat(read_dfs).reset_index().drop(columns='index')
 
 
 def read_OnixAnalogFrameCount(path):
