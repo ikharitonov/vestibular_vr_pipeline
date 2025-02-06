@@ -566,7 +566,7 @@ class preprocess:
         Input:
         - the detrended signal as delta F
         - The decay curve estimate as baseline fluorescence
-        Calculates 100 * deltaF / F (ie. % change)
+        Calculates deltaF / F
         :returns
         - dF/F (signals relative to baseline)
         '''
@@ -578,19 +578,19 @@ class preprocess:
                 for signal, fit in zip(main_data, self.exp_fits):
                     F = self.exp_fits[fit]
                     deltaF = main_data[signal]
-                    signal_dF_F = 100 * deltaF / F
+                    signal_dF_F = deltaF / F
                     dF_F[f'{signal[-3:]}_dfF'] = signal_dF_F
             if motion == True:
                 deltaF = self.motion_corr
                 F = self.exp_fits['expfit_470']
-                signal_dF_F = 100 * deltaF / F
+                signal_dF_F = deltaF / F
                 dF_F['470_dfF'] = signal_dF_F
                 main_data = self.data_detrended
                 for signal, fit in zip(main_data, self.exp_fits):
                     if '470' not in signal:
                         F = self.exp_fits[fit]
                         deltaF = main_data[signal]
-                        signal_dF_F = 100 * deltaF / F
+                        signal_dF_F = deltaF / F
                         dF_F[f'{signal[-3:]}_dfF'] = signal_dF_F
 
             if plot:
@@ -663,6 +663,7 @@ class preprocess:
                 writer.writerow([key, value])
         print('Info.csv saved')
     
+    
     def cross_correlate_signals(self, col1='470', col2='560', plot = False):
         """Cross-correlate specified signals, find absolute peak in ±5s window, and plot the result."""
         # Validate inputs
@@ -717,25 +718,25 @@ class preprocess:
     
 
     def write_preprocessed_csv(self, Onix_align = True, motion = False):
-        """
-        Writes the processed traces into a CSV file containing:
-        - dF/F and z-scored traces
-        - Optionally motion-corrected signal FIXME this is not implemented yet
-        - If self.events exists, it also writes the events DataFrame to a separate file
-        
-        :param Onix_align: FIXME unclear what Onix_align means or even if it is useful 
-        :param motion_correct: Default False, set to True if a motion-corrected signal should be added. 
-        FIXME this is not implemented yet
-        """
-    
-        # Combine the base data #add or remove signals to save.
+        # Combine the base data
         final_df = pd.concat([self.data_seconds.reset_index(drop=True),
                               self.deltaF_F.reset_index(drop=True),
                               self.zscored.reset_index(drop=True),], axis=1)
         
-        final_df = final_df.loc[:, ~final_df.columns.str.contains('^Unnamed')] #removes unwanted extra column, which apparently gets added sometimes???
-    
-        # Save the main fluorescence file
+        # Remove unnamed columns
+        final_df = final_df.loc[:, ~final_df.columns.str.contains('^Unnamed')]
+        
+        # Create rename mapping for dfF columns
+        rename_dict = {
+            '470_dfF': 'dfF_470',
+            '560_dfF': 'dfF_560', 
+            '410_dfF': 'dfF_410'
+        }
+        
+        # Rename columns
+        final_df = final_df.rename(columns=rename_dict)
+        
+        # Save with renamed columns
         final_df.to_csv(self.save_path + '/Processed_fluorescence.csv', index=False)
         print('Processed_fluorescence.csv saved')
         
