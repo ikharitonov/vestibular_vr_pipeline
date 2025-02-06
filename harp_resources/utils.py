@@ -55,14 +55,16 @@ class PhotometryReader(Csv):
 
 class Video(Csv):
     def __init__(self, pattern):
-        super().__init__(pattern, columns = ["HardwareCounter", "HardwareTimestamp", "FrameIndex", "Path", "Epoch"], extension="csv")
+        #super().__init__(pattern, columns = ["HardwareCounter", "HardwareTimestamp", "FrameIndex", "Path", "Epoch"], extension="csv")
+        super().__init__(pattern, columns = ["HardwareCounter", "HardwareTimestamp", "FrameIndex"], extension="csv") #we don't need the path and epoch
         self._rawcolumns = ["Time"] + self.columns[0:2]
 
     def read(self, file):
         data = pd.read_csv(file, header=0, names=self._rawcolumns)
         data["FrameIndex"] = data.index
-        data["Path"] = os.path.splitext(file)[0] + ".avi"
-        data["Epoch"] = file.parts[-3]
+        #we don't need the path and epoch
+        #data["Path"] = os.path.splitext(file)[0] + ".avi" #we d
+        #data["Epoch"] = file.parts[-3]
         data["Time"] = data["Time"].transform(lambda x: api.aeon(x))
         data.set_index("Time", inplace=True)
         return data
@@ -182,7 +184,7 @@ def load(reader: Reader, root: Path) -> pd.DataFrame: #used to load H1 & H2 regi
     return pd.concat(data)
     
 
-def load_harp(reader: Harp, root: Path) -> pd.DataFrame: #multiple files aware
+def load_harp(reader: Harp, root: Path) -> pd.DataFrame: #multiple files aware, but not used (we use load_regiters instead)
     root = Path(root)
     pattern = f"{root.joinpath(root.name)}_{reader.register.address}_*.bin"
     print(pattern)
@@ -196,25 +198,6 @@ def concat_digi_events(series_low: pd.DataFrame, series_high: pd.DataFrame) -> p
     data_on = series_high[series_high==True]
     return pd.concat([data_off, data_on]).sort_index()
 
-
-def get_register_object(register_number, harp_board='h1'):
-    
-    h1_reader = harp.create_reader(f'harp_resources/h1-device.yml', epoch=harp.REFERENCE_EPOCH)
-    h2_reader = harp.create_reader(f'harp_resources/h2-device.yml', epoch=harp.REFERENCE_EPOCH)
-    reference_dict = {
-        'h1': {
-            32: h1_reader.Cam0Event,
-            33: h1_reader.Cam1Event,
-            38: h1_reader.StartAndStop,
-            46: h1_reader.OpticalTrackingRead
-        },
-        'h2': {
-            38: h2_reader.Encoder,
-            39: h2_reader.AnalogInput,
-            42: h2_reader.ImmediatePulses
-        }
-    }
-    return reference_dict[harp_board][register_number]
 
 def read_ExperimentEvents(path):
     filenames = os.listdir(path/'ExperimentEvents')
@@ -236,7 +219,7 @@ def read_ExperimentEvents(path):
         return None
 
 
-def read_OnixAnalogFrameCount(path): #multiple files aware
+def read_OnixAnalogFrameCount(path): #multiple files aware, but we use load_2 instead
     filenames = os.listdir(path/'OnixAnalogFrameCount')
     filenames = [x for x in filenames if x[:20]=='OnixAnalogFrameCount'] # filter out other (hidden) files
     sorted_filenames = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in filenames])).sort_values()
@@ -244,6 +227,7 @@ def read_OnixAnalogFrameCount(path): #multiple files aware
     for row in sorted_filenames:
         read_dfs.append(pd.read_csv(path/'OnixAnalogFrameCount'/f"OnixAnalogFrameCount_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv"))
     return pd.concat(read_dfs).reset_index().drop(columns='index')
+
 
 def read_OnixAnalogData(dataset_path, channels=[0], binarise=False): #multiple files aware
     # https://github.com/neurogears/vestibular-vr/blob/benchmark-analysis/Python/vestibular-vr/analysis/round_trip.py
@@ -283,6 +267,7 @@ def read_OnixAnalogData(dataset_path, channels=[0], binarise=False): #multiple f
     print(f'OnixAnalogData loaded in {time.time() - start_time:.2f} seconds.')
 
     return photo_diode
+
 
 def read_OnixAnalogClock(dataset_path): #multiple files aware
     start_time = time.time()
@@ -351,6 +336,57 @@ def read_SessionSettings(dataset_path, print_contents=False):
 #     Events = pd.read_csv(photometry_data_path/'Events.csv', skiprows=0, index_col=False)
 #     return Events
 
+
+def load_registers(dataset_path, dataframe=True, verbose = False):
+    """Load register data and return as either dictionary or DataFrame
+    Args:
+        dataset_path: Path to data directory
+        dataframe: If True returns DataFrame, if False returns dict
+    """
+    h1_dict, h2_dict = load_register_paths(dataset_path, verbose)
+    
+    h1_data_streams = {}
+    for register in h1_dict.keys():
+        data_stream = load(get_register_object(register, 'h1'), dataset_path/'HarpDataH1')
+        
+        if data_stream.columns.shape[0] > 1:
+            for col_name in data_stream.columns:
+                h1_data_streams[f'{col_name}({register})'] = data_stream[col_name]
+        elif data_stream.columns.shape[0] == 1:
+            h1_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream
+        else:
+            raise ValueError("Loaded data stream does not contain supported number of columns")
+    
+    h2_data_streams = {}
+    for register in h2_dict.keys():
+        data_stream = load(get_register_object(register, 'h2'), dataset_path/'HarpDataH2')
+        
+        if data_stream.columns.shape[0] > 1:
+            for col_name in data_stream.columns:
+                h2_data_streams[f'{col_name}({register})'] = data_stream[col_name]
+        elif data_stream.columns.shape[0] == 1:
+            h2_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream[data_stream.columns[0]]
+        else:
+            raise ValueError("Loaded data stream does not contain supported number of columns")
+    
+    # Convert DataFrames to Series
+    for streams in [h1_data_streams, h2_data_streams]:
+        for stream_name, stream in streams.items():
+            if isinstance(stream, pd.DataFrame):
+                try:
+                    streams[stream_name] = pd.Series(data=stream.values.squeeze(), index=stream.index)
+                except:
+                    raise ValueError(f"Failed to convert register {stream_name} to Series")
+    
+    if dataframe:
+        # Return as DataFrame
+        all_series = {**h1_data_streams, **h2_data_streams}
+        return pd.DataFrame(all_series)
+    else:
+        # Return as dict
+        return {'H1': h1_data_streams, 'H2': h2_data_streams}
+  
+    
 def load_register_paths(dataset_path, verbose=False):
     
     if not os.path.exists(dataset_path/'HarpDataH1') or not os.path.exists(dataset_path/'HarpDataH2'):
@@ -416,56 +452,27 @@ def load_register_paths(dataset_path, verbose=False):
                 print(f"    {f.name}")
     
     return h1_dict, h2_dict
-
-
-def load_registers(dataset_path, dataframe=False, verbose = False):
-    """Load register data and return as either dictionary or DataFrame
-    Args:
-        dataset_path: Path to data directory
-        dataframe: If True returns DataFrame, if False returns dict
-    """
-    h1_dict, h2_dict = load_register_paths(dataset_path, verbose)
     
-    h1_data_streams = {}
-    for register in h1_dict.keys():
-        data_stream = load(get_register_object(register, 'h1'), dataset_path/'HarpDataH1')
-        
-        if data_stream.columns.shape[0] > 1:
-            for col_name in data_stream.columns:
-                h1_data_streams[f'{col_name}({register})'] = data_stream[col_name]
-        elif data_stream.columns.shape[0] == 1:
-            h1_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream
-        else:
-            raise ValueError("Loaded data stream does not contain supported number of columns")
     
-    h2_data_streams = {}
-    for register in h2_dict.keys():
-        data_stream = load(get_register_object(register, 'h2'), dataset_path/'HarpDataH2')
-        
-        if data_stream.columns.shape[0] > 1:
-            for col_name in data_stream.columns:
-                h2_data_streams[f'{col_name}({register})'] = data_stream[col_name]
-        elif data_stream.columns.shape[0] == 1:
-            h2_data_streams[f'{data_stream.columns[0]}({register})'] = data_stream[data_stream.columns[0]]
-        else:
-            raise ValueError("Loaded data stream does not contain supported number of columns")
+def get_register_object(register_number, harp_board='h1'):
     
-    # Convert DataFrames to Series
-    for streams in [h1_data_streams, h2_data_streams]:
-        for stream_name, stream in streams.items():
-            if isinstance(stream, pd.DataFrame):
-                try:
-                    streams[stream_name] = pd.Series(data=stream.values.squeeze(), index=stream.index)
-                except:
-                    raise ValueError(f"Failed to convert register {stream_name} to Series")
+    h1_reader = harp.create_reader(f'harp_resources/h1-device.yml', epoch=harp.REFERENCE_EPOCH)
+    h2_reader = harp.create_reader(f'harp_resources/h2-device.yml', epoch=harp.REFERENCE_EPOCH)
+    reference_dict = {
+        'h1': {
+            32: h1_reader.Cam0Event,
+            33: h1_reader.Cam1Event,
+            38: h1_reader.StartAndStop,
+            46: h1_reader.OpticalTrackingRead
+        },
+        'h2': {
+            38: h2_reader.Encoder,
+            39: h2_reader.AnalogInput,
+            42: h2_reader.ImmediatePulses
+        }
+    }
+    return reference_dict[harp_board][register_number]
     
-    if dataframe:
-        # Return as DataFrame
-        all_series = {**h1_data_streams, **h2_data_streams}
-        return pd.DataFrame(all_series)
-    else:
-        # Return as dict
-        return {'H1': h1_data_streams, 'H2': h2_data_streams}
 
 def load_streams_from_h5(data_path):
     # File path to read the HDF5 file
