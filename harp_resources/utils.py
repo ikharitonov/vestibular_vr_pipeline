@@ -145,10 +145,33 @@ class OnixDigitalReader(Csv): #multiple files aware
             raise
         
         
-def load_2(reader: Reader, root: Path) -> pd.DataFrame: #to concatenate when multiple files are present in a data directory 
+def load_2(reader: Reader, root: Path, verbose=False) -> pd.DataFrame:
     root = Path(root)
     pattern = f"{root.joinpath(reader.pattern).joinpath(reader.pattern)}_*.{reader.extension}"
-    data = [reader.read(Path(file)) for file in glob(pattern)]
+    files = glob(pattern)
+    
+    # Create list of (file, timestamp) tuples
+    file_timestamps = []
+    for f in files:
+        # Extract timestamp from filename (format: YYYY-MM-DDThh-mm-ss)
+        timestamp = Path(f).stem.split('_')[-1]
+        file_timestamps.append((f, timestamp))
+    
+    # Sort files by timestamp
+    file_timestamps.sort(key=lambda x: x[1])
+    sorted_files = [f[0] for f in file_timestamps]
+    
+    if verbose:
+        print("\nFiles sorted by timestamp:")
+        for f in sorted_files:
+            print(f"  {Path(f).name}")
+    
+    data = []
+    for file in sorted_files:
+        if verbose:
+            print(f"\nProcessing: {Path(file).name}")
+        data.append(reader.read(Path(file)))
+    
     return pd.concat(data)
 
 
@@ -328,49 +351,80 @@ def read_SessionSettings(dataset_path, print_contents=False):
 #     Events = pd.read_csv(photometry_data_path/'Events.csv', skiprows=0, index_col=False)
 #     return Events
 
-def load_register_paths(dataset_path):
+def load_register_paths(dataset_path, verbose=False):
     
     if not os.path.exists(dataset_path/'HarpDataH1') or not os.path.exists(dataset_path/'HarpDataH2'):
         raise FileNotFoundError(f"'HarpDataH1' or 'HarpDataH2' folder was not found in {dataset_path}.")
     h1_folder = dataset_path/'HarpDataH1'
     h2_folder = dataset_path/'HarpDataH2'
     
+    if verbose: print("\nProcessing H1 files:")
     h1_files = os.listdir(h1_folder)
     h1_files = [f for f in h1_files if f.split('_')[0] == 'HarpDataH1']
+    if verbose: print("Found H1 files:", h1_files)
+    
     h1_dict = {}
     for filename in h1_files:
         register = int(filename.split('_')[1])
         if register not in h1_dict:
             h1_dict[register] = []
         h1_dict[register].append(h1_folder/filename)
+        if verbose: print(f"Added to register {register}: {filename}")
     
     # Sort files by timestamp for each register
     for register in h1_dict:
         h1_dict[register].sort()  # Files sort by timestamp naturally
+        if verbose:
+            print(f"\nSorted files for H1 register {register}:")
+            for f in h1_dict[register]:
+                print(f"  {f.name}")
     
+    if verbose: print("\nProcessing H2 files:")
     h2_files = os.listdir(h2_folder)
     h2_files = [f for f in h2_files if f.split('_')[0] == 'HarpDataH2']
+    if verbose: print("Found H2 files:", h2_files)
+    
     h2_dict = {}
     for filename in h2_files:
         register = int(filename.split('_')[1])
         if register not in h2_dict:
             h2_dict[register] = []
         h2_dict[register].append(h2_folder/filename)
+        if verbose: print(f"Added to register {register}: {filename}")
     
     # Sort files by timestamp for each register
     for register in h2_dict:
         h2_dict[register].sort()  # Files sort by timestamp naturally
+        if verbose:
+            print(f"\nSorted files for H2 register {register}:")
+            for f in h2_dict[register]:
+                print(f"  {f.name}")
+            
+    # Print final dictionary contents
+    if verbose:
+        print("\nFinal dictionaries:")
+        print("H1 Dictionary:")
+        for reg in sorted(h1_dict.keys()):
+            print(f"  Register {reg}:")
+            for f in h1_dict[reg]:
+                print(f"    {f.name}")
+                
+        print("\nH2 Dictionary:")
+        for reg in sorted(h2_dict.keys()):
+            print(f"  Register {reg}:")
+            for f in h2_dict[reg]:
+                print(f"    {f.name}")
     
     return h1_dict, h2_dict
 
 
-def load_registers(dataset_path, dataframe=False):
+def load_registers(dataset_path, dataframe=False, verbose = False):
     """Load register data and return as either dictionary or DataFrame
     Args:
         dataset_path: Path to data directory
         dataframe: If True returns DataFrame, if False returns dict
     """
-    h1_dict, h2_dict = load_register_paths(dataset_path)
+    h1_dict, h2_dict = load_register_paths(dataset_path, verbose)
     
     h1_data_streams = {}
     for register in h1_dict.keys():
