@@ -8,6 +8,7 @@ import numpy as np
 import pandas as pd
 import h5py
 from dotmap import DotMap
+from sklearn.linear_model import LinearRegression
 
 import harp
 from aeon.io.reader import Reader, Csv, Harp
@@ -171,7 +172,7 @@ def load_2(reader: Reader, root: Path, verbose=False) -> pd.DataFrame:
     data = []
     for file in sorted_files:
         if verbose:
-            print(f"\nProcessing: {Path(file).name}")
+            print(f"\Loading: {Path(file).name}")
         data.append(reader.read(Path(file)))
     
     return pd.concat(data)
@@ -264,7 +265,7 @@ def read_OnixAnalogData(dataset_path, channels=[0], binarise=False): #multiple f
         photo_diode[np.where(photo_diode > PHOTODIODE_THRESHOLD)] = 1
         photo_diode = photo_diode.astype(bool)
 
-    print(f'OnixAnalogData loaded in {time.time() - start_time:.2f} seconds.')
+    #print(f'OnixAnalogData loaded in {time.time() - start_time:.2f} seconds.')
 
     return photo_diode
 
@@ -287,7 +288,7 @@ def read_OnixAnalogClock(dataset_path): #multiple files aware
     
     output = np.concatenate(arrays_to_concatenate)
 
-    print(f'OnixAnalogClock loaded in {time.time() - start_time:.2f} seconds.')
+    #print(f'OnixAnalogClock loaded in {time.time() - start_time:.2f} seconds.')
 
     return output
 
@@ -473,6 +474,65 @@ def get_register_object(register_number, harp_board='h1'):
     }
     return reference_dict[harp_board][register_number]
     
+
+def detect_and_remove_outliers(df, x_column, y_column, verbose=False):
+    """
+    Detects and removes outliers from a DataFrame using IQR and residual-based methods.
+    
+    Parameters:
+        df (pd.DataFrame): The input DataFrame.
+        x_column (str): The column name for the independent variable.
+        y_column (str): The column name for the dependent variable.
+        verbose (bool): If True, prints the list of outliers. If False, prints the number of outliers found.
+    
+    Returns:
+        pd.DataFrame: A DataFrame with outliers removed.
+    """
+    # Step 1: Detect outliers using IQR (initial filtering)
+    def detect_outliers_iqr(data, column):
+        Q1 = data[column].quantile(0.25)
+        Q3 = data[column].quantile(0.75)
+        IQR = Q3 - Q1
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+        return (data[column] < lower_bound) | (data[column] > upper_bound)
+    
+    # Apply IQR-based outlier detection
+    x_outliers = detect_outliers_iqr(df, x_column)
+    y_outliers = detect_outliers_iqr(df, y_column)
+    initial_outliers = df[x_outliers | y_outliers]
+    filtered_data = df[~(x_outliers | y_outliers)]
+
+    # Step 2: Fit linear model on filtered data
+    X_filtered = filtered_data[x_column].values.reshape(-1, 1)
+    y_filtered = filtered_data[y_column].values
+    model = LinearRegression()
+    model.fit(X_filtered, y_filtered)
+
+    # Step 3: Detect outliers based on residuals
+    y_pred = model.predict(X_filtered)
+    residuals = y_filtered - y_pred
+    residual_threshold = 3 * np.std(residuals)  # Use 3 * std as threshold
+    residual_outliers_mask = np.abs(residuals) > residual_threshold
+
+    # Add residual-based outliers back to outliers
+    residual_outliers = filtered_data[residual_outliers_mask]
+    final_outliers = pd.concat([initial_outliers, residual_outliers])
+
+    # Remove outliers from the original DataFrame
+    cleaned_data = df[~df.index.isin(final_outliers.index)]
+
+    # Verbose output
+    if not final_outliers.empty:
+        if verbose:
+            print(f"Outliers detected")
+            print(final_outliers[[x_column, y_column]])
+            print(f"Warning: {len(final_outliers)} outliers detected and removed.")
+        else:
+            print(f"Warning: {len(final_outliers)} outliers detected and removed.")
+
+    return cleaned_data
+
 
 def load_streams_from_h5(data_path):
     # File path to read the HDF5 file
