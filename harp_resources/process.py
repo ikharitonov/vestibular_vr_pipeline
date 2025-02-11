@@ -409,11 +409,12 @@ def photometry_harp_onix_synchronisation(
     framecount_len = len(upsampled_framecount)
     
     if data_len != framecount_len or clock_len != framecount_len:
-        print(f"Warning: Shape mismatch detected! See https://github.com/neurogears/vestibular-vr/issues/81 for more information.")
         offset = framecount_len - clock_len
         upsampled_framecount = upsampled_framecount.iloc[offset:]
+        print(f"Warning: analog_data and _framecount mismatch by {offset}! Should be OK, but see https://github.com/neurogears/vestibular-vr/issues/81 for more information.")
     else:
-        print("onix_analog shapes are consistent!")
+        if verbose:
+            print("onix_analog shapes are consistent!")
 
     # Find the time mapping/warping between onix and harp clock
     clock = onix_harp["Clock"]
@@ -458,6 +459,9 @@ def photometry_harp_onix_synchronisation(
     if verbose:
         print(f"{len(photometry_sync_events)} events found")
         if not photometry_sync_events.empty:
+            if len(photometry_sync_events) > 15:
+                print (" Many events detected, plotting the first 15")    
+            plot_limit = 15
             plot_limit = min(15, len(photometry_sync_events))
             limited_index = photometry_sync_events.index[:plot_limit]
             limited_values = photometry_sync_events.values[:plot_limit]
@@ -479,7 +483,7 @@ def photometry_harp_onix_synchronisation(
         plt.show()
 
         plt.figure()
-        plt.scatter(limited_index, onix_digital["Clock"][:plot_limit])
+        plt.scatter(photometry_sync_events.index, onix_digital["Clock"]) #plot whole range to see if there are outliers 
         plt.xlabel("Photometry Time(s)")
         plt.ylabel("Onix Digital Clock")
         plt.title("Photometry Events vs Onix Digital Clock")
@@ -505,7 +509,7 @@ def photometry_harp_onix_synchronisation(
         print(f"R-squared value for HarpTime to OnixClock: {r_squared_harp_to_onix}")
         print(f"R-squared value for photometry to onix: {r_squared_photometry_to_onix}")
         
-    return output, photometry_sync_events
+    return output, photometry_sync_events, harp_to_onix_clock, onix_time_to_photometry, onix_to_harp_timestamp, photometry_to_harp_time
 
 
 def select_from_photodiode_data(onix_analog_clock, OnixAnalogData, hard_start_time, harp_end_time, conversions):
