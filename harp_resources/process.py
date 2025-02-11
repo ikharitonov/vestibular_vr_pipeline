@@ -8,6 +8,7 @@ from time import time
 from datetime import datetime, timedelta
 from scipy.signal import correlate
 from scipy import signal  # for Lomb-Scargle PSD
+import re # for photometry alignment
 
 from . import utils
 import aeon.io.api as api
@@ -187,7 +188,7 @@ def plot_dataset(dataset_path):
     for register, register_stream in h2_data_streams.items():
         plot_detail(register_stream, dataset_path.name, register=str(register))
 
-def align_fluorescence_first_approach(fluorescence_df, onixdigital_df):
+def align_fluorescence_first_approach(fluorescence_df, onixdigital_df): #DEPRECATED, could be useful for Cohort0?
     # Aligns Fluorescence signal using the HARP timestamps from onix_digital and interpolation
     # Steps:
     # - Selecting the rows where there are photometry synchronisation events occurring
@@ -271,7 +272,7 @@ def reformat_and_add_many_streams(streams, dataframe, source_name, stream_names,
 
 #def calculate_conversions_second_approach(data_path, photometry_path=None, verbose=True):
     
-def photometry_alingment_Cohort1plus(
+def photometry_alingment_Cohort1plus_old(
     onix_analog_clock, 
     onix_analog_framecount, 
     onix_digital, 
@@ -314,6 +315,158 @@ def photometry_alingment_Cohort1plus(
     if r_squared < 0.999:
         print(f"Warning: R-squared value between onix_analog_clock and _framecount is {r_squared:.6f}. Could be an issue with the dataset.")
              
+    #if hasattr(self, 'photometry_events') and isinstance(self.photometry_events, pd.DataFrame): #already loaded 
+    #onix_digital = utils.read_OnixDigital(data_path)
+    #photometry_events = utils.read_fluorescence_events(photometry_path)
+
+    onix_digital_array = onix_digital["Clock"].values
+    photometry_events_array = photometry_events.index.values
+    #photometry_events_array = photometry_events['TimeStamp'].values
+
+    # Calculate time differences (to make the signals stationary for cross-correlation)
+    time_series_1 = np.diff(onix_digital_array)
+    time_series_2 = np.diff(photometry_events_array)
+
+    # Cross-correlation
+    correlation = correlate(time_series_1, time_series_2, mode='full')
+    offset = np.argmax(correlation) - (len(time_series_2) - 1)
+
+    print(f"Calculated offset between onix_digital and photometry_events: {offset}")
+
+    # Adjust arrays based on the calculated offset
+    if offset < 0:  # photometry_events starts after onix_digital
+        print(f"photometry_events starts later by {abs(offset)} indices. Adjusting...")
+        photometry_events_array = photometry_events_array[abs(offset):]
+    elif offset > 0:  # onix_digital starts after photometry_events
+        print(f"onix_digital starts later by {offset} indices. Adjusting...")
+        onix_digital_array = onix_digital_array[offset:]
+
+    # Align lengths after applying offset
+    min_length = min(len(onix_digital_array), len(photometry_events_array))
+    onix_digital_array = onix_digital_array[:min_length]
+    photometry_events_array = photometry_events_array[:min_length]
+
+    # Define conversion functions between timestamps (photometry to onix and harp)
+    m, b = np.polyfit(photometry_events_array, onix_digital_array, 1)
+    photometry_to_onix_time = lambda x: x * m + b
+    photometry_to_harp_time = lambda x: onix_to_harp_timestamp(photometry_to_onix_time(x))
+    onix_time_to_photometry = lambda x: (x - b) / m
+
+    output["photometry_to_harp_time"] = photometry_to_harp_time
+    output["onix_time_to_photometry"] = onix_time_to_photometry
+
+    if verbose:
+        print('Following conversion functions calculated:')
+        for k in output.keys(): print(f'\t{k}')
+        print('\nUsage example 1: plotting photodiode signal for three halts')
+        print('\n\t# Loading data')
+        print('\tonix_analog_clock = utils.read_onix_analog_clock(data_path)\n\tOnixAnalogData = utils.read_OnixAnalogData(data_path)\n\tExperimentEvents = utils.read_ExperimentEvents(data_path)')
+        print('\n\t# Selecting desired HARP times, applying conversion to ONIX time')
+        print("\tstart_harp_time_of_halt_one = ExperimentEvents[ExperimentEvents.Value=='Apply halt: 1s'].iloc[0].Seconds\n\tstart_harp_time_of_halt_four = ExperimentEvents[ExperimentEvents.Value=='Apply halt: 1s'].iloc[3].Seconds")
+        print("\tstart_onix_time = conversions['harp_to_onix_clock'](start_harp_time_of_halt_one - 1)\n\tend_onix_time = conversions['harp_to_onix_clock'](start_harp_time_of_halt_four)")
+        print('\n\t# Selecting photodiode times and data within the range, converting back to HARP and plotting')
+        print('\tindices = np.where(np.logical_and(onix_analog_clock >= start_onix_time, onix_analog_clock <= end_onix_time))')
+        print("\tselected_harp_times = conversions['onix_to_harp_timestamp'](onix_analog_clock[indices])\n\tselected_photodiode_data = OnixAnalogData[indices]")
+        print('\tplt.plot(selected_harp_times, selected_photodiode_data[:, 0])')
+        print('\nUsage example 2: plot photometry in the same time range')
+        print('\n\tPhotometry = utils.read_fluorescence(photometry_path)')
+        print("\n\tstart_photometry_time = conversions['onix_time_to_photometry'](start_onix_time)")
+        print("\tend_photometry_time = conversions['onix_time_to_photometry'](end_onix_time)")
+        print("\n\tselected_photometry_data = Photometry[Photometry['TimeStamp'].between(start_photometry_time, end_photometry_time)]['CH1-470'].values")
+        print("\tselected_harp_times = conversions['photometry_to_harp_time'](Photometry[Photometry['TimeStamp'].between(start_photometry_time, end_photometry_time)]['TimeStamp'])")
+        print('\tplt.plot(selected_harp_times, selected_photometry_data)')
+        print("\nIt is best not to convert the whole onix_analog_clock array to HARP timestamps at once (e.g. conversions['onix_to_harp_timestamp'](onix_analog_clock)). It's faster to first find the necessary timestamps and indices in ONIX format as shown above.")
+
+
+    print(f'Calculation of conversions finished in {time() - start_time:.2f} seconds.')
+    
+    return output
+
+
+def photometry_alingment(
+    onix_analog_data,
+    onix_analog_clock, 
+    onix_analog_framecount, 
+    onix_digital, 
+    onix_harp,
+    photometry_events, 
+    verbose=True
+    ):
+    start_time = time()
+    output = {}
+
+    upsampled_framecount = np.array(onix_analog_framecount["Seconds"]).repeat(100, axis=0)[0:-100]
+    
+    # usampling _framecount by 100 as it has 100 _clock points per frame 
+    df = onix_analog_framecount.copy()
+    upsample_factor = 100
+    new_index = np.linspace(0, len(df) - 1, len(df) * upsample_factor)
+    upsampled_framecount = pd.DataFrame(index=new_index)
+    for col in df.columns:     # Interpolate all columns
+        upsampled_framecount[col] = np.interp(new_index, np.arange(len(df)), df[col])
+    # Convert back to DataFrame format
+    upsampled_framecount.index = pd.to_datetime(upsampled_framecount.index[0]) + pd.to_timedelta(upsampled_framecount.index, unit="s")
+
+
+    # check onix_analog shapes for consistency
+    data_len = onix_analog_data.shape[0]
+    clock_len = onix_analog_clock.shape[0]
+    framecount_len = upsampled_framecount["Index"].iloc[-1]  # Get last index value
+    
+    if data_len != framecount_len or clock_len != framecount_len:
+        print(f" Warning: Shape mismatch detected! See https://github.com/neurogears/vestibular-vr/issues/81 for more information.")
+        #print(f"  Expected from _framecounter: {framecount_len}")
+        #print(f"  onix_analog_data: {data_len}")
+        #print(f"  onix_analog_clock: {clock_len}")
+        print(f'Cutting {upsampled_framecount.shape[0] - onix_analog_clock.shape[0]} values from the beginning of onix_analog_framecount. Data considered to be MISSING.\n')
+
+        offset =  upsampled_framecount.shape[0] - onix_analog_clock.shape[0]
+        upsampled_framecount =  upsampled_framecount[offset:]
+    else:
+        print("onix_analog shapes are consistent!")
+
+     # find the time mapping/warping between onix and harp clock
+    clock = onix_harp["Clock"]  # ONIX hardware clock
+    harp = onix_harp["HarpTime"]  # corresponding harp time
+    o_m, o_b = np.polyfit(clock, harp, 1)
+    onix_to_harp_seconds = lambda x: x*o_m + o_b
+    onix_to_harp_timestamp = lambda x: api.aeon(onix_to_harp_seconds(x))
+    harp_to_onix_clock = lambda x: (x - o_b) / o_m
+    
+    # Calculate R-squared value
+    y_pred = onix_to_harp_seconds(clock) 
+    ss_res = np.sum((harp - y_pred) ** 2)
+    ss_tot = np.sum((harp - np.mean(harp)) ** 2)
+    r_squared = 1 - (ss_res / ss_tot)
+
+    output["onix_to_harp_timestamp"] = onix_to_harp_timestamp
+    output["harp_to_onix_clock"] = harp_to_onix_clock
+    output["r_squared"] = r_squared
+
+    if r_squared < 0.999:
+        print(f"Warning: R-squared value between Clock and HarpTime is {r_squared:.6f}. Could be an issue with the dataset.")
+           
+    photometry_sync_events = photometry_events.dropna()   # Restrict to events with name "Input1" to "InputX" to ChannelValue 1-X
+    if "Name" in photometry_sync_events.columns:
+        try:
+            photometry_sync_events["ChannelValue"] = photometry_sync_events["Name"].apply(
+                lambda x: int(re.search(r"\d+$", x).group()) if isinstance(x, str) and re.search(r"\d+$", x) else None
+            )
+            # Remove NaNs after extraction
+            photometry_sync_events = photometry_sync_events.dropna(subset=["ChannelValue"])
+            if verbose:
+                print(f"Extracted {len(photometry_sync_events)} valid channel values")
+        except Exception as e:
+            print(f"⚠️ Warning: Error processing 'Name' column: {e}")
+            return None
+    else:
+        print("⚠️ Warning: 'Name' column not found in photometry_events")
+        return None
+
+ # Extract channel value
+           
+    return output, photometry_sync_events
+  
     #if hasattr(self, 'photometry_events') and isinstance(self.photometry_events, pd.DataFrame): #already loaded 
     #onix_digital = utils.read_OnixDigital(data_path)
     #photometry_events = utils.read_fluorescence_events(photometry_path)
