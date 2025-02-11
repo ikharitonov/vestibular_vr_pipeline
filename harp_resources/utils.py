@@ -42,11 +42,11 @@ class SessionData(Reader):
             print(json.dumps(data, indent=4))
 
 
-# not used 
+#not used 
 # class PhotometryReader(Csv):
 #     def __init__(self, pattern):
 #         #super().__init__(pattern, columns=["Time", "Events", "CH1-410", "CH1-470", "CH1-560", "U"], extension="csv")
-#         super().__init__(pattern, columns=["TimeStamp", "470_dfF", "410_dfF", "560_dfF"], extension="csv")
+#         super().__init__(pattern, columns=["TimeStamp", "dfF_470", "dfF_560", "dfF_410"], extension="csv")
 #         self._rawcolumns = self.columns
 
 #     def read(self, file):

@@ -414,11 +414,11 @@ def photometry_alingment(
     framecount_len = upsampled_framecount["Index"].iloc[-1]  # Get last index value
     
     if data_len != framecount_len or clock_len != framecount_len:
-        print(f" Warning: Shape mismatch detected! See https://github.com/neurogears/vestibular-vr/issues/81 for more information.")
+        print(f"Warning: Shape mismatch detected! See https://github.com/neurogears/vestibular-vr/issues/81 for more information.")
         #print(f"  Expected from _framecounter: {framecount_len}")
         #print(f"  onix_analog_data: {data_len}")
         #print(f"  onix_analog_clock: {clock_len}")
-        print(f'Cutting {upsampled_framecount.shape[0] - onix_analog_clock.shape[0]} values from the beginning of onix_analog_framecount. Data considered to be MISSING.\n')
+        print(f' Cutting {upsampled_framecount.shape[0] - onix_analog_clock.shape[0]} values from the beginning of onix_analog_framecount.\n')
 
         offset =  upsampled_framecount.shape[0] - onix_analog_clock.shape[0]
         upsampled_framecount =  upsampled_framecount[offset:]
@@ -437,33 +437,77 @@ def photometry_alingment(
     y_pred = onix_to_harp_seconds(clock) 
     ss_res = np.sum((harp - y_pred) ** 2)
     ss_tot = np.sum((harp - np.mean(harp)) ** 2)
-    r_squared = 1 - (ss_res / ss_tot)
+    r_squared_harp_to_onix = 1 - (ss_res / ss_tot)
 
     output["onix_to_harp_timestamp"] = onix_to_harp_timestamp
     output["harp_to_onix_clock"] = harp_to_onix_clock
-    output["r_squared"] = r_squared
+    output["r_squared_harp_to_onix"] = r_squared_harp_to_onix
 
-    if r_squared < 0.999:
-        print(f"Warning: R-squared value between Clock and HarpTime is {r_squared:.6f}. Could be an issue with the dataset.")
-           
-    photometry_sync_events = photometry_events.dropna()   # Restrict to events with name "Input1" to "InputX" to ChannelValue 1-X
-    if "Name" in photometry_sync_events.columns:
-        try:
-            photometry_sync_events["ChannelValue"] = photometry_sync_events["Name"].apply(
-                lambda x: int(re.search(r"\d+$", x).group()) if isinstance(x, str) and re.search(r"\d+$", x) else None
-            )
-            # Remove NaNs after extraction
-            photometry_sync_events = photometry_sync_events.dropna(subset=["ChannelValue"])
-            if verbose:
-                print(f"Extracted {len(photometry_sync_events)} valid channel values")
-        except Exception as e:
-            print(f"⚠️ Warning: Error processing 'Name' column: {e}")
-            return None
-    else:
-        print("⚠️ Warning: 'Name' column not found in photometry_events")
-        return None
+    if r_squared_harp_to_onix < 0.999:
+        print(f"Warning: R-squared value between Clock and HarpTime in onix_harp is {r_squared_harp_to_onix:.6f}. Could be an issue with the dataset.")
+    
+    nan_count = photometry_events.isna().sum().sum() # Count and report rows with NaN values
+    if verbose and nan_count > 0:
+        print(f"WARNING, {nan_count} NaNs detected, check Events'csv")
+    
+    photometry_sync_events = photometry_events.dropna() # Drop rows with NaN values, shouldn't be needed but just in case 
+    photometry_sync_events["TimeStamp"] = photometry_sync_events["TimeStamp"].apply(lambda x: x/1000) # Convert to seconds
+    photometry_sync_events.set_index("TimeStamp", inplace=True) # Set "TimeStamp" as the index
+    photometry_sync_events = photometry_sync_events["State"]  # Use "State" for plotting
+     #truncate photometry to onix_digital, this is needed because of extra state transition upon worflow termination
+    min_length = min(len(photometry_sync_events), len(onix_digital["Clock"])) 
+    photometry_sync_events = photometry_sync_events.iloc[:min_length]
+    num_truncated = len(photometry_sync_events) - min_length
+    if (num_truncated > 1):
+        print(f"WARNING Photometry_sync_events was truncated by {num_truncated} points, more than the expected 1.")
+    
+    # Only proceed if enough data exists
+    if verbose:
+        print (f"{len(photometry_sync_events)} events found")
+        if not photometry_sync_events.empty: 
+            plt.figure()
+            plt.step(photometry_sync_events.index, photometry_sync_events.values)
+            plt.xlabel("Time (s)")
+            plt.ylabel("Event State")
+            plt.title("Photometry Event Synchronization")
+            plt.show()
+        else:
+            print(f"Not enough events to plot: found {len(photometry_sync_events)} events.")
+        
+    onix_digital["sync_line"] = 1 - (onix_digital["DigitalInputs0"] & 1)
 
- # Extract channel value
+    if verbose:
+        plt.figure()
+        plt.step(onix_digital["Clock"], onix_digital["sync_line"])
+        plt.xlabel("Clock")
+        plt.ylabel("Sync Line")
+        plt.title("Onix Digital Sync Line")
+        plt.show()
+        
+    if verbose:
+        plt.figure()
+        plt.scatter(photometry_sync_events.index, onix_digital["Clock"])
+        plt.xlabel("Clock")
+        plt.ylabel("Sync Line")
+        plt.title("Onix Digital Sync Line")
+        plt.show()
+            
+    # define conversion functions between timestamps (onix to harp)
+    m, b = np.polyfit(photometry_sync_events.index, onix_digital["Clock"], 1)
+    photometry_to_onix_time = lambda x: x*m + b
+    photometry_to_harp_time = lambda x: onix_to_harp_timestamp(photometry_to_onix_time(x))
+    onix_time_to_photometry = lambda x: (x - b) / m
+    
+    # Calculate R-squared value
+    y_pred = photometry_to_onix_time(photometry_sync_events.index) 
+    ss_res = np.sum((onix_digital["Clock"] - y_pred) ** 2)
+    ss_tot = np.sum((onix_digital["Clock"] - np.mean(onix_digital["Clock"])) ** 2)
+    r_squared_photometry_to_onix = 1 - (ss_res / ss_tot)
+    output["r_squared_photometry_to_onix"] = r_squared_photometry_to_onix
+    
+    if r_squared_photometry_to_onix < 0.999:
+        print(f"Warning: R-squared value between photometry and onix_digital is {r_squared_photometry_to_onix:.6f}. Could be an issue with the dataset.")
+    
            
     return output, photometry_sync_events
   
