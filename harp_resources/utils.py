@@ -42,16 +42,17 @@ class SessionData(Reader):
             print(json.dumps(data, indent=4))
 
 
-class PhotometryReader(Csv):
-    def __init__(self, pattern):
-        #super().__init__(pattern, columns=["Time", "Events", "CH1-410", "CH1-470", "CH1-560", "U"], extension="csv")
-        super().__init__(pattern, columns=["TimeStamp", "470_dfF", "410_dfF", "56_dfF"], extension="csv")
-        self._rawcolumns = self.columns
+# not used 
+# class PhotometryReader(Csv):
+#     def __init__(self, pattern):
+#         #super().__init__(pattern, columns=["Time", "Events", "CH1-410", "CH1-470", "CH1-560", "U"], extension="csv")
+#         super().__init__(pattern, columns=["TimeStamp", "470_dfF", "410_dfF", "560_dfF"], extension="csv")
+#         self._rawcolumns = self.columns
 
-    def read(self, file):
-        data = pd.read_csv(file, header=1, names=self._rawcolumns)
-        data.set_index("Time", inplace=True)
-        return data
+#     def read(self, file):
+#         data = pd.read_csv(file, header=1, names=self._rawcolumns)
+#         data.set_index("Time", inplace=True)
+#         return data
     
 
 class Video(Csv):
@@ -172,7 +173,7 @@ def load_2(reader: Reader, root: Path, verbose=False) -> pd.DataFrame:
     data = []
     for file in sorted_files:
         if verbose:
-            print(f"\Loading: {Path(file).name}")
+            print(f"\nLoading: {Path(file).name}")
         data.append(reader.read(Path(file)))
     
     return pd.concat(data)
@@ -220,21 +221,27 @@ def read_ExperimentEvents(path):
         return None
 
 
-def read_OnixAnalogFrameCount(path): #multiple files aware, but we use load_2 instead
-    filenames = os.listdir(path/'OnixAnalogFrameCount')
-    filenames = [x for x in filenames if x[:20]=='OnixAnalogFrameCount'] # filter out other (hidden) files
-    sorted_filenames = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in filenames])).sort_values()
-    read_dfs = []
-    for row in sorted_filenames:
-        read_dfs.append(pd.read_csv(path/'OnixAnalogFrameCount'/f"OnixAnalogFrameCount_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv"))
-    return pd.concat(read_dfs).reset_index().drop(columns='index')
+# def read_OnixAnalogFrameCount(path): #multiple files aware, but we use load_2 instead
+#     filenames = os.listdir(path/'OnixAnalogFrameCount')
+#     filenames = [x for x in filenames if x[:20]=='OnixAnalogFrameCount'] # filter out other (hidden) files
+#     sorted_filenames = pd.to_datetime(pd.Series([x.split('_')[1].split('.')[0] for x in filenames])).sort_values()
+#     read_dfs = []
+#     for row in sorted_filenames:
+#         read_dfs.append(pd.read_csv(path/'OnixAnalogFrameCount'/f"OnixAnalogFrameCount_{row.strftime('%Y-%m-%dT%H-%M-%S')}.csv"))
+#     return pd.concat(read_dfs).reset_index().drop(columns='index')
 
 
-def read_OnixAnalogData(dataset_path, channels=[0], binarise=False): #multiple files aware
-    # https://github.com/neurogears/vestibular-vr/blob/benchmark-analysis/Python/vestibular-vr/analysis/round_trip.py
-    # https://open-ephys.github.io/onix-docs/Software%20Guide/Bonsai.ONIX/Nodes/AnalogIODevice.html
-    #:param channels: list of analogue channels to read (0-11)
+def read_OnixAnalogData(dataset_path, channels=[0], binarise=False, method='adaptive', refractory = 300, flip=True, verbose=False):
+    """Read and process Onix analog data.
     
+    Args:
+        dataset_path: Path to data
+        channels: List of channels to read [0-11]
+        binarise: Whether to binarize data
+        method: 'adaptive' or 'threshold'
+        flip: Flip binary values
+        verbose: Print processing details
+    """
     start_time = time.time()
     arrays_to_concatenate = []
     files_to_read = [x for x in os.listdir(dataset_path/'OnixAnalogData')]
@@ -242,7 +249,7 @@ def read_OnixAnalogData(dataset_path, channels=[0], binarise=False): #multiple f
     def extract_number(filename):
         return int(filename.split('_')[-1].split('.')[0])
     
-    # Sort the files based on the extracted number
+    # Sort files
     files_to_read.sort(key=extract_number)
     
     for filename in files_to_read:
@@ -250,23 +257,75 @@ def read_OnixAnalogData(dataset_path, channels=[0], binarise=False): #multiple f
             photo_diode = np.fromfile(f, dtype=np.int16)
 
             try:
-                photo_diode = np.reshape(photo_diode, (-1, 12))[:, channels]  # Load specified columns
+                photo_diode = np.reshape(photo_diode, (-1, 12))[:, channels]
             except:
                 print(f'ERROR: Cannot reshape loaded "{filename}" binary file into [-1, 12] shape. Continuing with non-reshaped data.')
             
             arrays_to_concatenate.append(photo_diode)
 
-    # Concatenate all arrays row-wise
+    # Concatenate arrays
     photo_diode = np.concatenate(arrays_to_concatenate)
 
+    # Return raw data if binarize=False
+    if not binarise:
+        return photo_diode
+
     if binarise:
-        PHOTODIODE_THRESHOLD = 120  # FIXME magic number NOTE or at least check if it is a good threshold across datasets, pulse seems very short (single frame) and photodiode gain can filter the signal significantly  
-        photo_diode[np.where(photo_diode <= PHOTODIODE_THRESHOLD)] = 0
-        photo_diode[np.where(photo_diode > PHOTODIODE_THRESHOLD)] = 1
+        # Store original shape
+        original_shape = photo_diode.shape
+        
+        # Ensure 1D array
+        if photo_diode.ndim > 1:
+            photo_diode = photo_diode.flatten()
+        
+        if method == 'adaptive':
+            try:
+                threshold = np.percentile(photo_diode, 1)
+                threshold = threshold * 1.2
+                if verbose:
+                    print(f"Adaptive threshold: {threshold}")
+            except:
+                if verbose:
+                    print("Using default threshold")
+                threshold = 120
+        else:  # hard threshold
+            threshold = 120
+            if verbose:
+                print(f"Using hard threshold: {threshold}")
+
+        # Binarize
+        photo_diode = photo_diode <= threshold
         photo_diode = photo_diode.astype(bool)
-
-    #print(f'OnixAnalogData loaded in {time.time() - start_time:.2f} seconds.')
-
+        
+        # Flip if requested
+        if flip:
+            photo_diode = ~photo_diode
+        
+        # Convert to int for transition detection
+        signal_int = photo_diode.astype(int)
+        diff_signal = np.diff(signal_int)
+        
+        # Find falling edges with refractory period
+        fall_indices = np.where(diff_signal < 0)[0]
+        valid_falls = []
+        last_fall = -300  # Initialize before first possible transition
+        
+        for idx in fall_indices:
+            if idx - last_fall > refractory:  # Check refractory period
+                valid_falls.append(idx)
+                last_fall = idx
+        
+        falling_edges = len(valid_falls)
+        
+        if verbose:
+            print(f"Number of falling edges detected: {falling_edges}")
+            #if falling_edges > 0:
+               # print(f"First 5 falling edge indices: {valid_falls[:5]}")
+            if falling_edges == 0:
+                print("Warning: No falling edges detected. Check threshold value and signal.")
+        
+        return photo_diode
+    
     return photo_diode
 
 
@@ -477,6 +536,7 @@ def get_register_object(register_number, harp_board='h1'):
 
 def detect_and_remove_outliers(df, x_column, y_column, verbose=False):
     """
+    Used for onix_harp as the Harp clock (very rarely) produces outliers.
     Detects and removes outliers from a DataFrame using IQR and residual-based methods.
     
     Parameters:

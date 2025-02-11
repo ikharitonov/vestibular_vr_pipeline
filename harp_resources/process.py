@@ -270,6 +270,7 @@ def reformat_and_add_many_streams(streams, dataframe, source_name, stream_names,
 
 
 #def calculate_conversions_second_approach(data_path, photometry_path=None, verbose=True):
+    
 def photometry_alingment_Cohort1plus(
     onix_analog_clock, 
     onix_analog_framecount, 
@@ -300,10 +301,20 @@ def photometry_alingment_Cohort1plus(
     onix_to_harp_timestamp = lambda x: api.aeon(onix_to_harp_seconds(x))
     harp_to_onix_clock = lambda x: (x - o_b) / o_m
 
+    # Calculate R-squared value
+    y_pred = onix_to_harp_seconds(onix_analog_clock)
+    ss_res = np.sum((upsample - y_pred) ** 2)
+    ss_tot = np.sum((upsample - np.mean(upsample)) ** 2)
+    r_squared = 1 - (ss_res / ss_tot)
+
     output["onix_to_harp_timestamp"] = onix_to_harp_timestamp
     output["harp_to_onix_clock"] = harp_to_onix_clock
+    output["r_squared"] = r_squared
 
-    #if hasattr(self, 'photometry_events') and isinstance(self.photometry_events, pd.DataFrame):
+    if r_squared < 0.999:
+        print(f"Warning: R-squared value between onix_analog_clock and _framecount is {r_squared:.6f}. Could be an issue with the dataset.")
+             
+    #if hasattr(self, 'photometry_events') and isinstance(self.photometry_events, pd.DataFrame): #already loaded 
     #onix_digital = utils.read_OnixDigital(data_path)
     #photometry_events = utils.read_fluorescence_events(photometry_path)
 
@@ -342,8 +353,6 @@ def photometry_alingment_Cohort1plus(
 
     output["photometry_to_harp_time"] = photometry_to_harp_time
     output["onix_time_to_photometry"] = onix_time_to_photometry
-    
-
 
     if verbose:
         print('Following conversion functions calculated:')
@@ -369,7 +378,7 @@ def photometry_alingment_Cohort1plus(
 
 
     print(f'Calculation of conversions finished in {time() - start_time:.2f} seconds.')
-
+    
     return output
 
 def select_from_photodiode_data(onix_analog_clock, OnixAnalogData, hard_start_time, harp_end_time, conversions):
