@@ -515,7 +515,6 @@ def load_register_paths(dataset_path, verbose=False):
     
     
 def get_register_object(register_number, harp_board='h1'):
-    
     h1_reader = harp.create_reader(f'harp_resources/h1-device.yml', epoch=harp.REFERENCE_EPOCH)
     h2_reader = harp.create_reader(f'harp_resources/h2-device.yml', epoch=harp.REFERENCE_EPOCH)
     reference_dict = {
@@ -531,6 +530,10 @@ def get_register_object(register_number, harp_board='h1'):
             42: h2_reader.ImmediatePulses
         }
     }
+    
+    if register_number not in reference_dict[harp_board]:
+        raise KeyError(f"Register number {register_number} not found for harp board {harp_board}")
+    
     return reference_dict[harp_board][register_number]
     
 
