@@ -10,6 +10,8 @@ import os
 import matplotlib as mpl
 import time
 
+import traceback #fixme for debugging purposes
+
 #FIXME list
 #DONE save_path generation and usage should be refactored
 #Events handling is confusing and probably unnecessary complicated (see issue #4 on repo)
@@ -92,7 +94,7 @@ class preprocess:
         return info
 
 
-    def create_basic(self, cutend = False, cutstart = False, target_area = 'X'):
+    def create_basic(self, cutend = False, cutstart = False, target_area = 'X', motion = False):
         '''
         The code assumes 470 nm channel always has data and does the following.
         0) loads Events.csv and Fluorescence-unaligned.csv
@@ -130,12 +132,11 @@ class preprocess:
         if 'experiment_type' not in self.info:
             self.info['experiment_type'] = ()
         self.info['experiment_type'] = experiments
-        
-        #Adding mousename in self for plotting and naming (could use self.info['mousename'] instead)
-        self.mousename = mousename
+        if 'motion_correction' not in self.info:
+            self.info['motion_correction'] = motion
         
         #print the mousename and session to output, epsecially usefull for batch processing 
-        print(f'\n\033[1mPreprocessing data for {mousename} in session {session}...\033[0m\n')
+        print(f'\n\033[1mPreprocessing data for {self.info["mousename"]} in session {session}...\033[0m\n')
         
         #reading the csv files into pandas dataframes
         events = pd.read_csv(event_path) 
@@ -345,12 +346,12 @@ class preprocess:
                 ax.legend()
             
             axes[-1].set_xlabel('Seconds')
-            fig.suptitle(f'Low-pass Filtered {self.mousename} with method: {method}')
+            fig.suptitle(f'Low-pass Filtered {self.info["mousename"]} with method: {method}')
             plt.tight_layout()
             
              # Save plot to file
             if savefig:
-                fig.savefig(self.save_path + f'/low-pass_filtered_{self.mousename}.png', dpi=150)  # Lower DPI to save time
+                fig.savefig(self.save_path + f'/low-pass_filtered_{self.info["mousename"]}.png', dpi=150)  # Lower DPI to save time
             
             plt.show()
             plt.close(fig)
@@ -365,7 +366,7 @@ class preprocess:
             print('No filtered signal was found')
             traces = self.signals
             
-        data_detrended = pd.DataFrame(index=traces.index)  # Initialize with proper index
+        detrended = pd.DataFrame(index=traces.index)  # Initialize with proper index
         exp_fits = pd.DataFrame()
         
         if 'detrend_params' not in self.info:
@@ -409,11 +410,11 @@ class preprocess:
             if method == "divisive":
                 signal_detrended = traces[trace].reset_index(drop=True) / signal_expfit.reset_index(drop=True)
             # Add detrended signal to DataFrame
-            data_detrended[f'detrend_{trace}'] = signal_detrended
+            detrended[f'detrend_{trace}'] = signal_detrended
             exp_fits[f'expfit{trace[-4:]}'] = signal_expfit
 
         #Plotting the detrended data
-        if plot and len(data_detrended.columns) > 0:  # Only plot if there's data
+        if plot and len(detrended.columns) > 0:  # Only plot if there's data
 
             # Plotting the filtered data with the exponential fit
             fig, axs = plt.subplots(len(traces.columns), figsize=(15, 10), sharex=True)
@@ -442,14 +443,14 @@ class preprocess:
                 ax.legend(lns, labs, loc=0)
             
             axs[-1].set(xlabel='seconds')
-            fig.suptitle(f'exponential fit {self.mousename}')
+            fig.suptitle(f'exponential fit {self.info["mousename"]}')
             if savefig:
-                plt.savefig(self.save_path + f'/exp-fit_{self.mousename}.png', dpi=300)
+                plt.savefig(self.save_path + f'/exp-fit_{self.info["mousename"]}.png', dpi=300)
             
-            fig, axs = plt.subplots(len(data_detrended.columns), figsize = (15, 10), sharex=True)
+            fig, axs = plt.subplots(len(detrended.columns), figsize = (15, 10), sharex=True)
             color_count = 0
-            for column, ax in zip(data_detrended.columns, axs):
-                ax.plot(self.data_seconds, data_detrended[column], c=self.colors[color_count], label=column)
+            for column, ax in zip(detrended.columns, axs):
+                ax.plot(self.data_seconds, detrended[column], c=self.colors[color_count], label=column)
                 if method == "subtractive":
                     ax.set(ylabel='data detrended (raw A.U.)')
                 if method == "divisive":
@@ -457,93 +458,224 @@ class preprocess:
                 color_count += 1
                 ax.legend()
             axs[-1].set(xlabel='seconds')
-            fig.suptitle(f'detrended data {self.mousename}, with method: {method}')
+            fig.suptitle(f'detrended data {self.info["mousename"]}, with method: {method}')
             if savefig:
-                plt.savefig(self.save_path + f'/Detrended_data_{self.mousename}.png', dpi=300)
+                plt.savefig(self.save_path + f'/Detrended_data_{self.info["mousename"]}.png', dpi=300)
 
-        return data_detrended, exp_fits
+        return detrended, exp_fits
 
 
-    def movement_correct(self, plot = False):
-        '''
-        NOTE not used at the time (2025 Jan, Cohort0 and Cohort1)
-        Uses detrended data from 410 and 470 signal to fit a linear regression that is then subtracted from the 470 data 
-        only if the correlation is postive.
-        Can change to always performing motion correction or changing to 560 if a red sensor is used for motion correction.
-        Returns empty list if data could not be motion corrected.
-        '''
-         # Check if we have detrended data
-        if not hasattr(self, 'data_detrended'):
+    def movement_correct(self, plot=False, iso_ch = 410, signal_ch = 470):
+        """
+        Performs motion correction on photometry signals using linear regression between 410nm and 470nm channels.
+        
+        Args:
+            plot (bool): If True, generates a correlation plot between 410nm and 470nm signals.
+        
+        Returns:
+            pandas.DataFrame: Contains all signals with motion-corrected 470nm and original 410nm/560nm signals.
+                            Returns empty DataFrame if correction fails.
+        """
+        # Check if we have detrended data
+        if not hasattr(self, 'detrended'):
             print('No detrended data found. Run detrend() method first.')
-            return []
+            return pd.DataFrame()
         
-        data = self.data_detrended
+        if 'motion_correction_slope' not in self.info:
+            self.info['motion_correction_slope'] = []
+            self.info['motion_correction_R-squared'] = []
+    
+        data = self.detrended
+        corrected_data = pd.DataFrame()
+        iso_channel = f'detrend_filtered_{iso_ch}'
+        signal_channel = f'detrend_filtered_{signal_ch}'
         
-        # Check if required columns exist
-        required_columns = ['detrend_filtered_410', 'detrend_filtered_470']
-        if not all(col in data.columns for col in required_columns):
-            print('Required columns (detrend_filtered_410, detrend_filtered_470) not found in detrended data.')
-            return []
+        # # Check if required columns exist
+        # required_columns = ['detrend_filtered_410', 'detrend_filtered_470']
+        # if not all(col in data.columns for col in required_columns):
+        #     print('Required columns (detrend_filtered_410, detrend_filtered_470) not found in detrended data.')
+        #     return pd.DataFrame()
         
         try:
-            slope, intercept, r_value, p_value, std_err = linregress(x=data['detrend_filtered_410'], y=data['detrend_filtered_470'])
-            print(f'For 410/470 motion correction, slope = {slope:.3f} and R-squared = {r_value**2:.3f}')
+            # Perform linear regression
+            slope, intercept, r_value, p_value, std_err = linregress(x=data[iso_channel], 
+                                                                    y=data[signal_channel])
+            self.info['motion_correction_slope'] = slope
+            self.info['motion_correction_R-squared'] = r_value**2
+    
+            # Generate correlation plot if requested
             if plot:
                 fig, ax = plt.subplots(figsize=(15, 10))
-                plt.scatter(data['detrend_filtered_410'][::5], data['detrend_filtered_470'][::5], alpha=0.1, marker='.')
+                plt.scatter(data[iso_channel][::5], data[signal_channel][::5], 
+                           alpha=0.1, marker='.')
                 x = np.array(ax.get_xlim())
                 ax.plot(x, intercept + slope * x)
-                ax.set_xlabel('410')
-                ax.set_ylabel('470')
-                ax.set_title(f'410 nm - 470 nm correlation {self.mousename}.')
-                xlim = ax.get_xlim()[1]
-                ylim = ax.get_ylim()[0]
+                ax.set_xlabel(iso_ch)
+                ax.set_ylabel(signal_ch)
+                ax.set_title(f'{iso_ch} nm - {signal_ch} nm correlation {self.info["mousename"]}.')
                 plt.rcParams.update({'font.size': 18})
-                plt.savefig(self.save_path + f'/motion_correlation_{self.mousename}.png', dpi=300)
-                
+    
+            # Apply motion correction if enabled and slope is positive
+            if self.info['motion_correction'] == False:
+                print('Motion correction NOT applied, correlation plot for information only.')
+                # Copy all original signals
+                for col in data.columns:
+                    corrected_data[col] = data[col]
+                return corrected_data
+    
             if slope > 0:
-                control_corr = intercept + slope * data['detrend_filtered_410']
-                signal_corrected = data['detrend_filtered_470'] - control_corr
-                return signal_corrected
+                # Calculate motion-corrected signal
+                control_corr = intercept + slope * data[iso_channel] #the correction calculated using the signal_ch/iso_ch linear fit is applied to all channels
+                corrected_470 = data['detrend_filtered_470'] - control_corr
+                corrected_410 = data['detrend_filtered_410'] - control_corr
+                corrected_560 = data['detrend_filtered_560'] - control_corr
+                
+                #Create output DataFrame with all signals
+                for col in data.columns:
+                    if '470' in col:
+                        corrected_data['motion_corr_470'] = corrected_470  # Add motion-corrected 470
+                    elif '410' in col:
+                        corrected_data['motion_corr_410'] = corrected_410 # data[col]  # Add original 410
+                    elif '560' in col:
+                        corrected_data['motion_corr_560'] = corrected_560 # data[col]  # Add original 560
+
+                self.info['motion_correction'] = True
+                print(f'Motion correction APPLIED to all channels based on iso {iso_ch} and singal {signal_ch}. slope = {slope:.3f} and R-squared = {r_value**2:.3f}')
+                
+                #debugging 
+                # Add new plot showing motion corrected signals
+                if plot:
+                    fig, ax = plt.subplots(figsize=(15, 10))
+                    for col in corrected_data.columns:
+                        ax.plot(self.data_seconds['TimeStamp'], 
+                            corrected_data[col], 
+                            label=col,
+                            alpha=0.7)
+                    ax.set_xlabel('Time (s)')
+                    ax.set_ylabel('Fluorescence')
+                    ax.set_title(f'Motion Corrected Signals - {self.info["mousename"]}')
+                    ax.legend()
+                    plt.tight_layout()
+                #debugging   
+                    return corrected_data
+            
             else:
-                print('signal could not be motion corrected')
-                print(intercept, slope)
-                return []
+                print('WARNING: signal was not motion corrected as slope <= 0')
+                print(f'Intercept: {intercept}, Slope: {slope}')
+                self.info['motion_correction'] = False
+                # Copy all original signals FIXME why si this needed, just return data no?
+                for col in data.columns:
+                    corrected_data[col] = data[col]
+                return corrected_data
+                
+    
         except KeyError:
-            print('signal could not be motion corrected, the original data is returned')
-            print(intercept, slope)
-            return []
+            print('Linear fit failed, the original data is returned')
+            # Print full traceback
+            traceback.print_exc()
+            self.info['motion_correction'] = False
+            # Copy all original signals FIXME why si this needed, just return data no?
+            for col in data.columns:
+                corrected_data[col] = data[col]
+            return corrected_data
 
 
-    def z_score(self, motion = False, plot = False, savefig = False):
+    def get_deltaF_F(self, plot=False, savefig=False):
+        '''
+        Input:
+        - the detrended signal as delta F
+        - The decay curve estimate as baseline fluorescence (how does this make sense? same in Akam notebook) 
+        Calculates deltaF / F
+        :returns
+        - dF/F (signals relative to baseline)
+        '''
+        dF_F = pd.DataFrame()
+    
+        if self.info['detrend_method'] == 'subtractive':
+            print('The method used for detrending was subtractive, deltaF/F is calculated now.')
+            if self.info['motion_correction'] == False:
+                main_data = self.detrended
+                for signal, fit in zip(main_data, self.exp_fits):
+                    F = self.exp_fits[fit]
+                    deltaF = main_data[signal]
+                    signal_dF_F = deltaF / F
+                    dF_F[f'{signal[-3:]}_dfF'] = signal_dF_F
+            if self.info['motion_correction'] == True:
+                deltaF = self.motion_corrected
+                F = self.exp_fits['expfit_470']
+                signal_dF_F = deltaF / F
+                dF_F['470_dfF'] = signal_dF_F
+                main_data = self.detrended
+                for signal, fit in zip(main_data, self.exp_fits):
+                    if '470' not in signal:
+                        F = self.exp_fits[fit]
+                        deltaF = main_data[signal]
+                        signal_dF_F = deltaF / F
+                        dF_F[f'{signal[-3:]}_dfF'] = signal_dF_F
+    
+        if self.info['detrend_method'] == 'divisive': #already dF/F and was motion corrected  
+            print('Only doing motion correction if needed, as divisive detrending already resulted in deltaF/F')
+            if self.info['motion_correction'] == False:
+                # Copy all detrended signals to dF_F
+                for signal in self.detrended.columns:
+                    dF_F[f'{signal[-3:]}_dfF'] = self.detrended[signal]
+            
+            if self.info['motion_correction'] == True:
+                # Copy all motion corrected signals to dF_F
+                for signal in self.motion_corrected.columns:
+                    dF_F[f'{signal[-3:]}_dfF'] = self.motion_corrected[signal]
+    
+        if plot:
+            fig, axs = plt.subplots(len(dF_F.columns), figsize=(15, 10), sharex=True)
+            color_count = 0
+            if len(dF_F.columns) > 1:
+                for column, ax in zip(dF_F.columns, axs):
+                    ax.plot(self.data_seconds, dF_F[column], c=self.colors[color_count], label=column)
+                    ax.set(xlabel='seconds', ylabel='dF/F')
+                    ax.legend()
+                    color_count += 1
+            else:
+                axs.plot(self.data_seconds, dF_F, c=self.colors[2])
+                axs.set(xlabel='seconds', ylabel='dF/F')
+            fig.suptitle(f'Delta F/F {self.info["mousename"]}')
+    
+            if savefig:
+                plt.savefig(self.save_path + f'/deltaf-F_figure_{self.info["mousename"]}.png', dpi=300)
+    
+        return dF_F
+
+
+    def z_score(self, plot=False, savefig=False):
         '''
         Z-scoring of signal traces
         Gets relative values of signal
         Calculates median signal value and standard deviation
-        Gives the signal strenght in terms of standard deviation units
-        Does not take into account signal reduction due to bleaching
+        Gives the signal strength in terms of standard deviation units
         '''
         zscored_data = pd.DataFrame()
-
-        if motion == True:
-            signal = self.motion_corr
-            zscored_data[f'z_470'] = (signal - np.median(signal)) / np.std(signal)
-            print('Motion correction APPLIED to z-score')
-        if motion == False:
-            signals = self.data_detrended
+    
+        if self.info['motion_correction'] == True: 
+            print('Working on motion corrected data')
+            signals = self.motion_corrected
             for signal in signals:
-                    signal_corrected = signals[signal]
-                    zscored_data[f'z_{signal[-3:]}'] = (signal_corrected - np.median(signal_corrected)) / np.std(signal_corrected)
-            print('Motion correction NOT APPLIED to z-score')
-
-        zscored_data = zscored_data.reset_index(drop = True)
+                signal_corrected = signals[signal]
+                zscored_data[f'z_{signal[-3:]}'] = (signal_corrected - np.median(signal_corrected)) / np.std(signal_corrected)
+    
+        if self.info['motion_correction'] == False:
+            print('Working on NOT motion corrected data') 
+            signals = self.detrended
+            for signal in signals:
+                signal_corrected = signals[signal]
+                zscored_data[f'z_{signal[-3:]}'] = (signal_corrected - np.median(signal_corrected)) / np.std(signal_corrected)
+    
+        zscored_data = zscored_data.reset_index(drop=True)
         
         if plot:
-            fig, axs = plt.subplots(len(zscored_data.columns),figsize = (15, 10), sharex=True)
+            fig, axs = plt.subplots(len(zscored_data.columns), figsize=(15, 10), sharex=True)
             color_count = 0
             if len(zscored_data.columns) > 1:
                 for column, ax in zip(zscored_data.columns, axs):
-                    ax.plot(self.data_seconds, zscored_data[column], c = self.colors[color_count], label = column)
+                    ax.plot(self.data_seconds, zscored_data[column], c=self.colors[color_count], label=column)
                     ax.set(xlabel='seconds', ylabel='z-scored dF/F or raw')
                     ax.legend()
                     color_count += 1
@@ -553,98 +685,12 @@ class preprocess:
                 axs.legend()
     
             method_label = "raw" if self.info['detrend_method'] == "subtractive" else "dF/F"
-            fig.suptitle(f'Z-scored {method_label} data {self.mousename}')
+            fig.suptitle(f'Z-scored {method_label} data {self.info["mousename"]}')
             
             if savefig:
-                plt.savefig(self.save_path+f'/zscored_figure_{self.mousename}.png', dpi = 300)
-
+                plt.savefig(self.save_path + f'/zscored_figure_{self.info["mousename"]}.png', dpi=300)
+    
         return zscored_data
-
-
-    def get_deltaF_F(self, motion = False, plot = False, savefig = False):
-        '''
-        Input:
-        - the detrended signal as delta F
-        - The decay curve estimate as baseline fluorescence
-        Calculates deltaF / F
-        :returns
-        - dF/F (signals relative to baseline)
-        '''
-        if self.info['detrend_method'] == 'subtractive':
-            print('The method used for detrending was subtractive, deltaF/F is calculated now.')    
-            dF_F = pd.DataFrame()
-            if motion == False:
-                main_data = self.data_detrended
-                for signal, fit in zip(main_data, self.exp_fits):
-                    F = self.exp_fits[fit]
-                    deltaF = main_data[signal]
-                    signal_dF_F = deltaF / F
-                    dF_F[f'{signal[-3:]}_dfF'] = signal_dF_F
-            if motion == True:
-                deltaF = self.motion_corr
-                F = self.exp_fits['expfit_470']
-                signal_dF_F = deltaF / F
-                dF_F['470_dfF'] = signal_dF_F
-                main_data = self.data_detrended
-                for signal, fit in zip(main_data, self.exp_fits):
-                    if '470' not in signal:
-                        F = self.exp_fits[fit]
-                        deltaF = main_data[signal]
-                        signal_dF_F = deltaF / F
-                        dF_F[f'{signal[-3:]}_dfF'] = signal_dF_F
-
-            if plot:
-                fig, axs = plt.subplots(len(dF_F.columns),figsize = (15, 10), sharex=True)
-                color_count = 0
-                if len(dF_F.columns) >1:
-                    for column, ax in zip(dF_F.columns, axs):
-                        ax.plot(self.data_seconds, dF_F[column], c = self.colors[color_count], label = column)
-                        ax.set(xlabel='seconds', ylabel='dF/F')
-                        ax.legend()
-                        color_count += 1
-                else:
-                    axs.plot(self.data_seconds, dF_F, c=self.colors[2])
-                    axs.set(xlabel='seconds', ylabel='dF/F')
-                fig.suptitle(f'Delta F / F to exponential fit {self.mousename}')
-                
-                if savefig:
-                    plt.savefig(self.save_path+f'/deltaf-F_figure_{self.mousename}.png', dpi = 300)
-                
-            return dF_F
-        if self.info['detrend_method'] == 'divisive': 
-            print('The method used for detrending was divisive, deltaF/F has been already calculated')
-            dF_F = pd.DataFrame()
-            
-            if motion == False:
-                # Copy all detrended signals to dF_F
-                for signal in self.data_detrended.columns:
-                    dF_F[f'{signal[-3:]}_dfF'] = self.data_detrended[signal]
-            else:
-                # Add motion corrected 470 signal
-                dF_F['470_dfF'] = self.motion_corr
-                # Add other signals if they exist
-                for signal in self.data_detrended.columns:
-                    if '470' not in signal:
-                        dF_F[f'{signal[-3:]}_dfF'] = self.data_detrended[signal]
-            
-            if plot:
-                fig, axs = plt.subplots(len(dF_F.columns),figsize = (15, 10), sharex=True)
-                color_count = 0
-                if len(dF_F.columns) >1:
-                    for column, ax in zip(dF_F.columns, axs):
-                        ax.plot(self.data_seconds, dF_F[column], c = self.colors[color_count], label = column)
-                        ax.set(xlabel='seconds', ylabel='dF/F')
-                        ax.legend()
-                        color_count += 1
-                else:
-                    axs.plot(self.data_seconds, dF_F, c=self.colors[2])
-                    axs.set(xlabel='seconds', ylabel='dF/F')
-                fig.suptitle(f'Delta F/F {self.mousename}')
-                
-                if savefig:
-                    plt.savefig(self.save_path+f'/deltaf-F_figure_{self.mousename}.png', dpi = 300)
-                
-            return dF_F
 
 
     def write_info_csv(self):
@@ -762,6 +808,7 @@ class preprocess:
         A4_HEIGHT = 11.69
         SMALL_SIZE = 6
         MEDIUM_SIZE = 8
+        TITLE_SIZE = 6  # Adjust this value to make the titles smaller
         
         plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
         plt.rc('axes', titlesize=MEDIUM_SIZE)    # fontsize of the axes title
@@ -782,20 +829,20 @@ class preprocess:
                     color=self.colors[idx], alpha=1, label=f'Filtered {signal}', linewidth=0.5)
             ax1.plot(self.data_seconds['TimeStamp'], self.exp_fits[f'expfit_{signal[-3:]}'],
                     color='black', alpha=1, label='Exponential fit', linewidth=1)
-            ax1.set_title(f'Exponential Fit - {sensors[signal[-3:]]}')
+            ax1.set_title(f'Exponential Fit - {sensors[signal[-3:]]}', fontsize=TITLE_SIZE)
             ax1.legend(loc='upper right')
             
             # 2. dF/F signal
             ax2 = fig.add_subplot(gs[idx*3 + 1])
             ax2.plot(self.data_seconds['TimeStamp'], self.deltaF_F[f'{signal[-3:]}_dfF'],
                     color=self.colors[idx], linewidth=0.2)
-            ax2.set_title(f'ΔF/F Signal - {sensors[signal[-3:]]}')
+            ax2.set_title(f'ΔF/F Signal - {sensors[signal[-3:]]}', fontsize=TITLE_SIZE)
             
             # 3. Z-scored signal
             ax3 = fig.add_subplot(gs[idx*3 + 2])
             ax3.plot(self.data_seconds['TimeStamp'], self.zscored[f'z_{signal[-3:]}'],
                     color=self.colors[idx], linewidth=0.2)
-            ax3.set_title(f'Z-scored Signal - {sensors[signal[-3:]]}')
+            ax3.set_title(f'Z-scored Signal - {sensors[signal[-3:]]}', fontsize=TITLE_SIZE)
         
         # Add cross-correlation plot
         ax_cc = fig.add_subplot(gs[-1])
@@ -815,7 +862,7 @@ class preprocess:
         ax_cc.plot(window_lags, window, label='Cross-correlation')
         ax_cc.axvline(x=peak_lag, color='r', linestyle='--', label=f'Peak at {peak_lag:.2f}s')
         ax_cc.scatter([peak_lag], [peak_value], color='r')
-        ax_cc.set_title(f'Cross-correlation between {sensors[col1]} and {sensors[col2]}')
+        ax_cc.set_title(f'Cross-correlation between {sensors[col1]} and {sensors[col2]}', fontsize=TITLE_SIZE)
         ax_cc.set_xlabel('Lag (s)')
         ax_cc.set_ylabel('Cross-correlation')
         ax_cc.legend()
@@ -825,12 +872,18 @@ class preprocess:
         plt.xlabel('Time (s)')
         filter_method = self.info['filtering_method'][signal]
         detrend_method = self.info['detrend_method']
-        fig.suptitle(f'Signal Processing Steps - {self.mousename} {plot_info}\nFiltering: {filter_method}, Detrending: {detrend_method}', 
-                    y=0.95, fontsize=MEDIUM_SIZE)
+        motion_correction = self.info['motion_correction']
+        fig_title = (
+        f'Signal Processing Steps - {self.info["mousename"]} {plot_info}\n'
+        f'Filtering: {filter_method}, Detrending: {detrend_method}, '
+        f'Motion Correction: {motion_correction}'
+        )
+        fig.suptitle(f'Signal Processing Steps - {self.info["mousename"]} {plot_info}', fontsize=MEDIUM_SIZE + 2, y=0.98)
+        fig.text(0.5, 0.95, f'Filtering: {filter_method}, Detrending: {detrend_method}, Motion Correction for 470: {motion_correction}', ha='center', fontsize=MEDIUM_SIZE)
         plt.tight_layout()
         
         # Save figures in multiple formats
-        base_path = f'{self.save_path}/all_signals_{self.mousename}'
+        base_path = f'{self.save_path}/all_signals_{self.info["mousename"]}'
         plt.savefig(f'{base_path}.png', bbox_inches='tight', dpi=300)
         plt.savefig(f'{base_path}.eps', bbox_inches='tight', format='eps')
         plt.close()
